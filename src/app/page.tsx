@@ -25,25 +25,45 @@ import { formatCurrency } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 async function getDashboard() {
-  const [s, totalCards, pending, settledToday] = await Promise.all([
-    getSettings(),
-    prisma.card.count(),
-    prisma.transaction.count({ where: { status: "pending_approval" } }),
-    prisma.transaction.count({
-      where: {
-        status: "settled",
-        settledAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-      },
-    }),
-  ]);
-  return { settings: s, totalCards, pending, settledToday };
+  const startOfToday = new Date(new Date().setHours(0, 0, 0, 0));
+  const [s, totalCards, pending, settledToday, scansToday, overridesToday, syncedSettled, totalSettled] =
+    await Promise.all([
+      getSettings(),
+      prisma.card.count(),
+      prisma.transaction.count({ where: { status: "pending_approval" } }),
+      prisma.transaction.count({
+        where: { status: "settled", settledAt: { gte: startOfToday } },
+      }),
+      prisma.card.count({ where: { createdAt: { gte: startOfToday } } }),
+      prisma.card.count({
+        where: {
+          createdAt: { gte: startOfToday },
+          conditionConfirmedByStaff: true,
+        },
+      }),
+      prisma.transaction.count({
+        where: { status: "settled", shopifySynced: true },
+      }),
+      prisma.transaction.count({ where: { status: "settled" } }),
+    ]);
+  const overrideRate = scansToday > 0 ? Math.round((overridesToday / scansToday) * 100) : 0;
+  const aiAccuracy = scansToday > 0 ? 100 - overrideRate : null;
+  const shopifyRate =
+    totalSettled > 0 ? Math.round((syncedSettled / totalSettled) * 100) : null;
+  return {
+    settings: s,
+    totalCards,
+    pending,
+    settledToday,
+    scansToday,
+    aiAccuracy,
+    shopifyRate,
+  };
 }
 
 export default async function Home() {
-  const [session, { settings, totalCards, pending, settledToday }] = await Promise.all([
-    auth(),
-    getDashboard(),
-  ]);
+  const [session, dash] = await Promise.all([auth(), getDashboard()]);
+  const { settings, totalCards, pending, settledToday, scansToday, aiAccuracy, shopifyRate } = dash;
   const remaining = Math.max(0, settings.budgetTotal - settings.budgetUsed);
   const pct = settings.budgetTotal
     ? (settings.budgetUsed / settings.budgetTotal) * 100
@@ -73,7 +93,7 @@ export default async function Home() {
         )}
       </header>
 
-      <section className="mb-10 grid gap-4 md:grid-cols-4">
+      <section className="mb-6 grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>今日預算</CardDescription>
@@ -96,9 +116,14 @@ export default async function Home() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>累計掃描卡牌</CardDescription>
-            <CardTitle className="text-2xl">{totalCards}</CardTitle>
+            <CardDescription>今日掃描 / 成交</CardDescription>
+            <CardTitle className="text-2xl">
+              {scansToday} / {settledToday}
+            </CardTitle>
           </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">累計卡牌 {totalCards}</p>
+          </CardContent>
         </Card>
 
         <Card>
@@ -110,9 +135,16 @@ export default async function Home() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>今日成交</CardDescription>
-            <CardTitle className="text-2xl">{settledToday}</CardTitle>
+            <CardDescription>AI Condition 準確度 (今日)</CardDescription>
+            <CardTitle className="text-2xl">
+              {aiAccuracy === null ? "—" : `${aiAccuracy}%`}
+            </CardTitle>
           </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              Shopify 同步 {shopifyRate === null ? "—" : `${shopifyRate}%`}
+            </p>
+          </CardContent>
         </Card>
       </section>
 
