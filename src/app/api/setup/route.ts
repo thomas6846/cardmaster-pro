@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 const Body = z.object({
   email: z.string().email(),
-  password: z.string().min(8, "密碼至少 8 位"),
+  password: z.string().min(6, "密碼至少 6 位"),
   name: z.string().min(1),
 });
 

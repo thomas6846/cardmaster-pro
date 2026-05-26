@@ -10,6 +10,7 @@ export const runtime = "nodejs";
 const PatchBody = z.object({
   condition: z.enum(["S", "A", "B", "C", "D"]).optional(),
   finalPrice: z.number().nonnegative().optional(),
+  marketPrice: z.number().nonnegative().optional(),
   status: z
     .enum(["pending", "quoted", "approved", "rejected", "sold", "dropped"])
     .optional(),
@@ -44,11 +45,16 @@ export async function PATCH(
   const existing = await prisma.card.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
 
+  const effectiveMarket = parsed.data.marketPrice ?? existing.marketPrice;
   let newQuoted = existing.quotedPrice;
-  if (parsed.data.recompute || parsed.data.condition) {
+  if (
+    parsed.data.recompute ||
+    parsed.data.condition ||
+    parsed.data.marketPrice !== undefined
+  ) {
     const cond = (parsed.data.condition || existing.condition) as Condition;
     const q = await quoteCard({
-      marketPrice: existing.marketPrice,
+      marketPrice: effectiveMarket,
       condition: cond,
       inventoryCount: existing.inventoryCount,
     });
@@ -61,6 +67,14 @@ export async function PATCH(
       ...(parsed.data.condition ? { condition: parsed.data.condition } : {}),
       ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
       ...(parsed.data.status ? { status: parsed.data.status } : {}),
+      ...(parsed.data.marketPrice !== undefined
+        ? {
+            marketPrice: parsed.data.marketPrice,
+            marketSource: existing.marketSource.includes("(manual)")
+              ? existing.marketSource
+              : `${existing.marketSource} (manual)`,
+          }
+        : {}),
       quotedPrice: newQuoted,
       ...(parsed.data.finalPrice !== undefined
         ? { finalPrice: parsed.data.finalPrice }

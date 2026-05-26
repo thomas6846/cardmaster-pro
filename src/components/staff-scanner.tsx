@@ -15,6 +15,10 @@ import {
   AlertTriangle,
   LayoutGrid,
   Square,
+  Pencil,
+  Check,
+  X,
+  ExternalLink,
 } from "lucide-react";
 import {
   Card,
@@ -168,6 +172,32 @@ export function StaffScanner({
             : card,
         ),
       );
+    }
+  }
+
+  async function updateMarketPrice(cardId: string, marketPrice: number) {
+    const res = await fetch(`/api/cards/${cardId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ marketPrice, recompute: true }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setCards((prev) =>
+        prev.map((card) =>
+          card.id === cardId
+            ? {
+                ...card,
+                marketPrice: data.card.marketPrice,
+                marketSource: data.card.marketSource,
+                quotedPrice: data.card.quotedPrice,
+              }
+            : card,
+        ),
+      );
+      toast.success("市價已更新，報價已重新計算");
+    } else {
+      toast.error("更新失敗");
     }
   }
 
@@ -380,6 +410,7 @@ export function StaffScanner({
                 key={card.id}
                 card={card}
                 onConditionChange={(c) => updateCardCondition(card.id, c)}
+                onMarketPriceChange={(p) => updateMarketPrice(card.id, p)}
                 onRemove={() => removeCard(card.id)}
               />
             ))
@@ -440,12 +471,29 @@ export function StaffScanner({
 function CardRow({
   card,
   onConditionChange,
+  onMarketPriceChange,
   onRemove,
 }: {
   card: ScannedCard;
   onConditionChange: (c: Condition) => void;
+  onMarketPriceChange: (p: number) => void;
   onRemove: () => void;
 }) {
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [priceDraft, setPriceDraft] = useState(String(card.marketPrice));
+
+  const snkrdunkUrl = `https://snkrdunk.com/search?q=${encodeURIComponent(card.setCode || card.name)}`;
+
+  function commitPrice() {
+    const v = Number(priceDraft);
+    if (!Number.isFinite(v) || v < 0) {
+      toast.error("請輸入有效金額");
+      return;
+    }
+    onMarketPriceChange(v);
+    setEditingPrice(false);
+  }
+
   return (
     <Card>
       <CardContent className="flex gap-4 p-4">
@@ -474,10 +522,61 @@ function CardRow({
             </Button>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge variant="secondary">
-              市價 {formatCurrency(card.marketPrice)}
-            </Badge>
+            {editingPrice ? (
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">市價 HKD</span>
+                <Input
+                  type="number"
+                  value={priceDraft}
+                  onChange={(e) => setPriceDraft(e.target.value)}
+                  className="h-7 w-24 px-2 text-xs"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitPrice();
+                    if (e.key === "Escape") {
+                      setEditingPrice(false);
+                      setPriceDraft(String(card.marketPrice));
+                    }
+                  }}
+                />
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={commitPrice}>
+                  <Check className="h-3 w-3 text-emerald-600" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7"
+                  onClick={() => {
+                    setEditingPrice(false);
+                    setPriceDraft(String(card.marketPrice));
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setPriceDraft(String(card.marketPrice));
+                  setEditingPrice(true);
+                }}
+                className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-0.5 font-semibold hover:bg-accent"
+              >
+                市價 {formatCurrency(card.marketPrice)}
+                <Pencil className="h-3 w-3 opacity-60" />
+              </button>
+            )}
             <Badge variant="outline">{card.marketSource}</Badge>
+            <a
+              href={snkrdunkUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 rounded-full border border-input px-2.5 py-0.5 text-xs hover:bg-accent"
+            >
+              SNKRDUNK
+              <ExternalLink className="h-3 w-3" />
+            </a>
             <Badge variant={card.inventoryCount > 10 ? "warning" : "outline"}>
               庫存 {card.inventoryCount}
             </Badge>

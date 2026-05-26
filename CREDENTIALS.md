@@ -14,29 +14,13 @@
 
 ---
 
-## 2. Vercel (App hosting)
+## 2. Railway (App + Postgres 一站式) ✅（你已有 account）
 
-1. 去 [vercel.com](https://vercel.com) → **Sign up with GitHub**（用同一個 account 方便）
-2. 第一次會自動裝 Vercel GitHub App，授權埋俾 `cardmaster-pro` repo
-3. **暫時唔好按 Deploy** — 等我 push code 之後先做
+1. 去 [railway.app/new](https://railway.app/new) → **Deploy from GitHub repo**（之後做 deploy 嗰陣）
+2. **暫時唔需做嘢** — 等 git push 完先做
+3. Hobby Plan US$5/月（包 500 hrs runtime + 8GB Postgres）對小店超夠
 
-> Free tier 已夠 launch。如果想要永遠 always-on（無冷啟動）+ 多 bandwidth，升 Pro $20/mo。
-
----
-
-## 3. Neon Postgres (Database)
-
-1. 去 [neon.tech](https://neon.tech) → **Sign up with GitHub**
-2. 建立 Project：
-   - Name: `cardmaster-pro`
-   - Postgres version: 16 (latest)
-   - **Region: AWS Asia Pacific 1 (Singapore)** ← 最接近 HK
-3. 建立後喺 **Dashboard → Connection Details**：
-   - 揀 `Connection string`，**Pooled connection** 嗰條
-   - 樣樣似：`postgresql://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require`
-   - **複製，等陣俾我入 Vercel env vars**
-
-> Free tier：0.5GB 容量、191 compute-hours/月。對小店嚟講超過頭。
+> Railway 同時 host Next.js + Postgres + env vars + auto HTTPS + custom domain，一個 dashboard 搞掂。冇 Vercel cold start 問題。
 
 ---
 
@@ -49,14 +33,20 @@
 
 ---
 
-## 5. ScraperAPI (SNKRDUNK 代理)
+## 5. ScraperAPI (SNKRDUNK 代理) — **可選**
 
-1. 去 [scraperapi.com](https://www.scraperapi.com/) → **Start Free Trial**（5000 free credits）
+> 💡 我哋已經加咗「**員工手動 override 市價**」嘅 UI，所以 ScraperAPI 唔係必須。
+> 你可以：
+> - **方案 A**：唔填 `SCRAPERAPI_KEY`，全程用員工手動 input 市價（員工撳「SNKRDUNK」連結 → 喺 phone 睇真實價 → type 入系統）。$0/月。
+> - **方案 B**：填 ScraperAPI key，AI 識卡後自動 fetch 市價，員工只需 confirm。fetch 唔到時 fallback 到手動。
+>
+> 建議先用方案 A 試一兩個禮拜睇真實使用情況，再決定要唔要俾 ScraperAPI $49/月。
+
+如要方案 B：
+1. 去 [scraperapi.com](https://www.scraperapi.com/) → **Start Free Trial**（5000 free credits 試用）
 2. 試用滿意之後升 **Hobby $49/mo**：100k credits/月 + JS rendering + 國家選擇
 3. Dashboard 攞 **API Key**
-4. 註意：plan 要包含 **JS rendering** 同 **JP IP**
-
-> 5000 free credits 夠你試大約 100 次查價。Hobby plan 可以撐到中型店一個月運作。
+4. 注意：plan 要包含 **JS rendering** 同 **JP IP**
 
 ---
 
@@ -108,50 +98,18 @@
 
 ## 全部攞齊之後
 
-將下面填好交俾我（**或者貼喺 `.env.production.local`**）：
-
-```bash
-# Database
-DATABASE_URL="postgresql://...@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
-
-# Anthropic
-ANTHROPIC_API_KEY="sk-ant-..."
-ANTHROPIC_MODEL="claude-opus-4-7"
-
-# Shopify
-SHOPIFY_SHOP="your-store.myshopify.com"
-SHOPIFY_ADMIN_TOKEN="shpat_..."
-SHOPIFY_LOCATION_ID="12345678"
-SHOPIFY_API_VERSION="2025-01"
-
-# SNKRDUNK via ScraperAPI
-SCRAPERAPI_KEY="your_scraperapi_key"
-SCRAPERAPI_COUNTRY="jp"
-
-# Telegram
-TELEGRAM_BOT_TOKEN="123456789:ABC..."
-TELEGRAM_CHAT_ID="-1001234567890"
-
-# App
-NEXT_PUBLIC_APP_URL="https://your-vercel-domain.vercel.app"
-AUTH_SECRET="run: openssl rand -base64 32"
-AUTH_URL="https://your-vercel-domain.vercel.app"
-JPY_TO_HKD_RATE="0.0505"
-```
-
-⚠️ **永遠唔好 commit `.env.production.local` 入 GitHub**。`.gitignore` 已經有。
+入 Railway service 嘅 Variables tab 一個個 paste，**唔好 commit `.env.production`**。詳細參考 [DEPLOY.md](./DEPLOY.md)。
 
 ---
 
 ## Checklist (打勾交俾我)
 
 - [ ] GitHub repo URL：____________________________________
-- [ ] Vercel account 開好
-- [ ] Neon DATABASE_URL（pooled）：____________________________________
-- [ ] Anthropic API key + credit ≥ $20
-- [ ] ScraperAPI key
+- [ ] Railway account ✅（你已有）
+- [ ] Anthropic API key + credit ≥ $20 ✅（你已有）
+- [ ] ScraperAPI key（可選，留空都得）
 - [ ] Shopify SHOP + TOKEN + LOCATION_ID
 - [ ] Telegram BOT_TOKEN + CHAT_ID
 - [ ] 自訂 domain（可選）：____________________________________
 
-齊曬就話我知，我即刻 push + deploy。
+齊曬就話我知，我即刻幫你 push + 跟住 [DEPLOY.md](./DEPLOY.md) deploy。

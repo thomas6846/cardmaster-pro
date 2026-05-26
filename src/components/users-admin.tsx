@@ -127,10 +127,10 @@ export function UsersAdmin({
               />
             </div>
             <div className="md:col-span-1">
-              <Label>密碼 (≥8)</Label>
+              <Label>密碼 (≥6)</Label>
               <Input
                 type="password"
-                minLength={8}
+                minLength={6}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 required

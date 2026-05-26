@@ -1,6 +1,6 @@
-# Deploy to Vercel + Neon Postgres
+# Deploy to Railway
 
-跟住做就 launch 到 production。預計 15-30 分鐘（前提：[CREDENTIALS.md](./CREDENTIALS.md) 已經做完）。
+Railway = app + Postgres + env vars 一個 dashboard 搞掂。預計 15-25 分鐘（前提：[CREDENTIALS.md](./CREDENTIALS.md) 已搞掂 GitHub repo + Anthropic key 等）。
 
 ---
 
@@ -9,118 +9,123 @@
 ```bash
 cd "/Users/thomas/Desktop/MR 查價"
 
-git init -b main
-git add -A
-git commit -m "Initial CardMaster Pro release"
+# 我已經 git init + commit 咗第一次。如果重新克隆過就要先：
+# git init -b main
+# git add -A
+# git commit -m "Initial release"
 
 git remote add origin git@github.com:你的username/cardmaster-pro.git
 git push -u origin main
 ```
 
-> 如果 `git push` 要 SSH key，先去 GitHub Settings → SSH and GPG keys 加返自己 Mac 嘅 public key（`cat ~/.ssh/id_ed25519.pub`，冇就 `ssh-keygen -t ed25519`）。
+> 如果 push 卡住話 SSH key，先 `cat ~/.ssh/id_ed25519.pub`（冇就 `ssh-keygen -t ed25519`），複製到 GitHub Settings → SSH and GPG keys。
 
 ---
 
-## B. Neon Postgres 建好之後 — 推 schema
+## B. Railway 開 Project（兩個 service：app + Postgres）
 
-喺本地：
-
-```bash
-cd "/Users/thomas/Desktop/MR 查價"
-
-# 你嘅 Neon connection string（pooled 嗰條），匯出
-export DATABASE_URL="postgresql://...@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
-export DATABASE_DIRECT_URL="$DATABASE_URL"   # 同一條就得
-
-# 把所有 model 推上去（建 table、index、enum）
-npx prisma db push
-
-# 確認 generated client 對應住
-npx prisma generate
-```
+1. 入 [railway.app/new](https://railway.app/new) → **Deploy from GitHub repo**
+2. 揀 `cardmaster-pro` → Railway 會 detect 到係 Next.js，**唔好** 即刻 deploy
+3. 喺新 Project 入面：
+   - **+ Create** → **Database** → **Add PostgreSQL**
+4. 等 5 秒，會見到兩個 service：
+   - `cardmaster-pro` (Next.js app)
+   - `Postgres`
 
 ---
 
-## C. Vercel 部署
+## C. 入 Env Variables（app service 入面）
 
-1. 去 [vercel.com/new](https://vercel.com/new)
-2. **Import Git Repository** → 揀 `cardmaster-pro`
-3. **Framework Preset**：Next.js（自動偵測到）
-4. **Root Directory**：保持 `./`
-5. **Environment Variables**：撳 `Add`，逐個 paste 入去（**唔好** import `.env`）：
+撳 `cardmaster-pro` service → **Variables** tab → **+ New Variable** 逐個加：
 
-   | Key | Value |
-   |---|---|
-   | `DATABASE_URL` | Neon pooled URL |
-   | `DATABASE_DIRECT_URL` | Neon pooled URL（同一條 OK） |
-   | `AUTH_SECRET` | 行 `openssl rand -base64 32` 嘅輸出 |
-   | `AUTH_URL` | `https://cardmaster-pro-xxx.vercel.app`（部署後再回來填）|
-   | `NEXT_PUBLIC_APP_URL` | 同 AUTH_URL |
-   | `ANTHROPIC_API_KEY` | `sk-ant-...` |
-   | `ANTHROPIC_MODEL` | `claude-opus-4-7` |
-   | `SHOPIFY_SHOP` | `your-store.myshopify.com` |
-   | `SHOPIFY_ADMIN_TOKEN` | `shpat_...` |
-   | `SHOPIFY_LOCATION_ID` | location ID 數字 |
-   | `SHOPIFY_API_VERSION` | `2025-01` |
-   | `SCRAPERAPI_KEY` | ScraperAPI key |
-   | `SCRAPERAPI_COUNTRY` | `jp` |
-   | `TELEGRAM_BOT_TOKEN` | bot token |
-   | `TELEGRAM_CHAT_ID` | chat id（負數）|
-   | `JPY_TO_HKD_RATE` | `0.0505` |
-
-6. **Deploy** — 等 2-3 分鐘
-7. 部署完攞到 URL（例如 `cardmaster-pro-xxx.vercel.app`），返去 Environment Variables 更新 `AUTH_URL` 同 `NEXT_PUBLIC_APP_URL`，再 redeploy 一次
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | 撳 `Add Reference` → 揀 `Postgres.DATABASE_URL` (Railway 自動連) |
+| `DATABASE_DIRECT_URL` | 同 `DATABASE_URL` 一樣（reference） |
+| `AUTH_SECRET` | 行 `openssl rand -base64 32` 嘅輸出 |
+| `AUTH_URL` | Railway 自動分配嘅 URL（部署後返來填，例 `https://cardmaster-pro-production.up.railway.app`） |
+| `NEXT_PUBLIC_APP_URL` | 同 `AUTH_URL` |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` |
+| `ANTHROPIC_MODEL` | `claude-opus-4-7` |
+| `SHOPIFY_SHOP` | `your-store.myshopify.com` |
+| `SHOPIFY_ADMIN_TOKEN` | `shpat_...` |
+| `SHOPIFY_LOCATION_ID` | location ID 數字 |
+| `SHOPIFY_API_VERSION` | `2025-01` |
+| `SCRAPERAPI_KEY` | ScraperAPI key（可選，唔填會 fallback mock + 你可以員工手動 override 價）|
+| `SCRAPERAPI_COUNTRY` | `jp` |
+| `TELEGRAM_BOT_TOKEN` | bot token |
+| `TELEGRAM_CHAT_ID` | chat id（負數）|
+| `JPY_TO_HKD_RATE` | `0.0505` |
+| `NODE_ENV` | `production` |
 
 ---
 
-## D. 第一次啟動 — 建管理員
+## D. Build & Start Commands
 
-1. 開 `https://你的網址/setup`
-2. 入姓名 / Email / 密碼（≥8 位）→ **建立並登入**
+Railway 預設可能用 `npm run start` 但我哋要先 push schema + generate Prisma client。喺 `cardmaster-pro` service：
+
+1. **Settings** tab
+2. **Build Command**：
+   ```
+   npm install && npx prisma generate && npm run build
+   ```
+3. **Start Command**：
+   ```
+   npx prisma db push --accept-data-loss && npm run start
+   ```
+4. **Health Check Path**：`/`（可選）
+5. **Public Networking** → **Generate Domain**（Railway 即時分配一條 `*.up.railway.app`）
+6. 把嗰條 domain 複製，**返去 Variables** 填入 `AUTH_URL` 同 `NEXT_PUBLIC_APP_URL`，再撳 **Deploy**
+
+> `prisma db push --accept-data-loss` 喺第一次 deploy 會建 schema；之後改 schema 時亦同樣會 sync。如果生產數據要謹慎，就改用 `prisma migrate deploy` 配合 migration files。
+
+---
+
+## E. 第一次啟動 — 建管理員
+
+1. 開 `https://你的-railway-url.up.railway.app/setup`
+2. 入姓名 / Email / 密碼（**214209**）→ **建立並登入**
 3. 自動跳返首頁
 4. 入 **使用者管理** 加店員（STAFF）+ 主管（SUPERVISOR）帳號
 
 ---
 
-## E. 設 Telegram Webhook（可選）
+## F. 自訂 Domain（可選）
 
-如果想主管收到通知後 inline approve（唔開頁面都得），可以再加 webhook。目前係用 **inline button + URL link** 嘅做法，主管撳 link 開審批頁登入後決定。
-
----
-
-## F. 自訂 Domain
-
-1. Vercel project → Settings → Domains → Add
-2. 入你嘅 domain，跟 DNS 指引（A 或 CNAME）
-3. 等 SSL issue（5-10 分鐘）
-4. 更新 `AUTH_URL` + `NEXT_PUBLIC_APP_URL` 為新 domain，redeploy
+1. Railway service → **Settings** → **Networking** → **Custom Domain**
+2. 加你嘅 domain（例：`cardmaster.yourshop.com`）
+3. Railway 會顯示要喺 DNS 新增 CNAME → 去你 DNS provider（Cloudflare / GoDaddy）設定
+4. 等 SSL auto issue（5-10 分鐘）
+5. **重要**：更新 Variables 嘅 `AUTH_URL` + `NEXT_PUBLIC_APP_URL` 為新 domain，service redeploy
 
 ---
 
 ## 上線後 smoke checklist
 
-- [ ] `/login` 可以登入
-- [ ] `/setup` 已經 404（因為已有 user）
+- [ ] `/login` 可以登入（admin@you.com / 214209）
+- [ ] `/setup` 已 redirect 到 `/login`
 - [ ] STAFF 登入後唔見到「系統設定」/「使用者管理」
-- [ ] SUPERVISOR 開到 `/approve/[token]` 但 STAFF 開唔到 POST
-- [ ] `/scan` 真實上傳一張卡 → AI 識別成功（Anthropic）
-- [ ] 報價反映到實際 SNKRDUNK 價（ScraperAPI 成功）
-- [ ] 送審 → Telegram group 收到 message
-- [ ] 主管登入後審批 → 客戶 PDF 出到、Shopify 庫存有增加
+- [ ] SUPERVISOR / ADMIN 可開到 `/approve/[token]`，STAFF 開唔到
+- [ ] `/scan` 真實上傳一張卡 → Claude Vision 識別成功
+- [ ] 市價自動 fetch 自 ScraperAPI（或者員工手動入）
+- [ ] 送審 → Telegram group 收到 message + 主管可登入審批
+- [ ] 主管核准 → 客戶頁可下載 PDF 買取協議書
+- [ ] 完成交易 → Shopify 庫存有增加 + 預算扣減
 
 ---
 
 ## 監控
 
-- **Vercel Logs**：Vercel project → Logs（real-time）
-- **Neon Dashboard**：query metrics + slow queries
+- **Railway → Deployments**：每次 build / runtime log
+- **Railway → Metrics**：CPU / RAM / Network
+- **Postgres service → Connect**：直接連 DB 查資料
 - **ScraperAPI Dashboard**：credit 用量 + 成功率
 
 ---
 
-## 注意事項
+## 注意
 
-- ⚠️ **第一個 deploy 之前**，喺 `.env.local` 把所有 secrets 清空（avoid 不小心 commit）
-- ⚠️ **永遠唔好 push `.env*.local`** — `.gitignore` 已經有
-- ⚠️ **如果改 schema**，要先本地 `prisma db push` 對 Neon，再 Vercel redeploy
-- ⚠️ **ScraperAPI credit 監控** — 你部 app 每張卡用一次 credit（cache 6 小時）。100k credit/月 = 每日 3000+ 次唔重複嘅卡 query
+- ⚠️ **第一次 deploy 之前**，再 confirm `.env.local` 唔好揦住真 secret（已被 gitignore，但保險）
+- ⚠️ 改 `prisma/schema.prisma` 之後 → push 上 GitHub → Railway auto redeploy → start command 會跑 `prisma db push`
+- ⚠️ 密碼 `214209` 係 6 位 PIN，比建議 8 位短。風險係容易被暴力破解 — 上線後盡早 ADMIN → 改長密碼
+- ⚠️ ScraperAPI Free trial 5000 credits 可以試 100 次查價（每 6 小時 cache）。如果你想試吓會唔會用得著 paid plan，可以唔填 `SCRAPERAPI_KEY`，全程用「員工手動入市價」嘅 fallback

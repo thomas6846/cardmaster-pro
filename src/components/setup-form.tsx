@@ -57,15 +57,20 @@ export function SetupForm() {
         />
       </div>
       <div>
-        <Label htmlFor="password">密碼（至少 8 位）</Label>
+        <Label htmlFor="password">密碼（至少 6 位）</Label>
         <Input
           id="password"
           type="password"
           required
-          minLength={8}
+          minLength={6}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        {password.length > 0 && password.length < 8 && (
+          <p className="mt-1 text-xs text-amber-600">
+            ⚠️ 較短密碼風險高，建議 ≥8 位 + 字母數字混合
+          </p>
+        )}
       </div>
       <Button type="submit" className="w-full" disabled={loading}>
         {loading ? <Loader2 className="animate-spin" /> : <ShieldCheck />}

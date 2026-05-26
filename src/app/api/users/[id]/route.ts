@@ -11,7 +11,7 @@ const PatchBody = z.object({
   name: z.string().optional(),
   role: z.enum(["STAFF", "SUPERVISOR", "ADMIN"]).optional(),
   active: z.boolean().optional(),
-  password: z.string().min(8).optional(),
+  password: z.string().min(6).optional(),
 });
 
 export async function PATCH(
