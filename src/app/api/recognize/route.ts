@@ -7,7 +7,7 @@ import { getInventoryBySku } from "@/lib/shopify";
 import { quoteCard } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
-import type { Condition, RecognizedCard } from "@/lib/types";
+import type { Condition, RecognizedCard, InventoryLookup } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -70,6 +70,17 @@ export async function POST(req: Request) {
   });
 }
 
+// AI sometimes returns descriptive setCodes like "SV-P or SV2a (...)" — keep
+// only alphanumerics + dash so Shopify accepts it as a SKU parameter.
+function cleanSku(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const c = raw
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^A-Za-z0-9-]/g, "")
+    .slice(0, 30);
+  return c.length >= 2 ? c : null;
+}
+
 async function processOne(
   recog: RecognizedCard,
   imageDataUrl: string,
@@ -77,10 +88,12 @@ async function processOne(
   staffId: string,
   staffName?: string,
 ) {
-  const sku = recog.setCode || recog.name.slice(0, 24);
+  const sku = cleanSku(recog.setCode);
   const [market, inventory] = await Promise.all([
     lookupMarketPrice({ name: recog.name, setCode: recog.setCode }),
-    getInventoryBySku(sku),
+    sku
+      ? getInventoryBySku(sku)
+      : Promise.resolve<InventoryLookup>({ count: 0 }),
   ]);
 
   const quote = await quoteCard({

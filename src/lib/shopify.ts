@@ -134,6 +134,21 @@ function normaliseTitle(s: string): string {
     .trim();
 }
 
+/**
+ * The AI sometimes returns a descriptive blurb like "SV-P or SV2a (Pikachu ex
+ * promo/illustration rare style)" instead of a clean SKU. Shopify rejects URLs
+ * with un-escapable characters and 404s. Strip down to alphanumerics + dash,
+ * cap at 30 chars. Returns null if nothing usable remains.
+ */
+function sanitiseSku(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const cleaned = raw
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^A-Za-z0-9-]/g, "")
+    .slice(0, 30);
+  return cleaned.length >= 2 ? cleaned : null;
+}
+
 // Fuzzy-ish title match via GraphQL. We pull top 5, then pick the first whose
 // normalised title equals the card's normalised name. Avoids returning random
 // near-matches.
@@ -330,15 +345,26 @@ export async function syncPurchaseToShopify(
     try {
       let resolved: ResolvedVariant | null = null;
 
-      if (card.sku) {
-        resolved = await findVariantBySku(creds, card.sku);
+      // Try SKU lookup first. Treat any error (404 from malformed SKU, etc.)
+      // as "not found" and fall through to name match.
+      const cleanSku = sanitiseSku(card.sku);
+      if (cleanSku) {
+        try {
+          resolved = await findVariantBySku(creds, cleanSku);
+        } catch (err) {
+          console.warn("[shopify] findVariantBySku errored, falling through", err);
+        }
       }
       if (!resolved) {
-        resolved = await findVariantByName(creds, card.name);
+        try {
+          resolved = await findVariantByName(creds, card.name);
+        } catch (err) {
+          console.warn("[shopify] findVariantByName errored, falling through", err);
+        }
       }
       if (!resolved) {
         resolved = await createProductForCard(creds, {
-          sku: card.sku,
+          sku: cleanSku,
           name: card.name,
           rarity: card.rarity,
           language: card.language,
