@@ -30,6 +30,9 @@ import {
   PenTool,
   Eraser,
   ExternalLink,
+  RefreshCw,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -58,8 +61,19 @@ interface CheckoutTx {
   totalAmount: number;
   signatureData?: string | null;
   shopifySynced: boolean;
+  shopifySyncLog?: string | null;
   settledAt?: string | null;
   cards: CheckoutCard[];
+}
+
+interface ShopifySyncResult {
+  sku: string | null;
+  name: string;
+  ok: boolean;
+  error?: string;
+  matchedBy?: "sku" | "name" | "created";
+  productId?: string;
+  newQuantity?: number;
 }
 
 export function CheckoutView({
@@ -79,6 +93,17 @@ export function CheckoutView({
   );
   const [saving, setSaving] = useState(false);
   const [settling, setSettling] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
+
+  const syncResults: ShopifySyncResult[] = (() => {
+    if (!transaction.shopifySyncLog) return [];
+    try {
+      return JSON.parse(transaction.shopifySyncLog);
+    } catch {
+      return [];
+    }
+  })();
+  const syncFailures = syncResults.filter((r) => !r.ok);
 
   const total = useMemo(
     () =>
@@ -129,6 +154,33 @@ export function CheckoutView({
       body: JSON.stringify({ signatureData: dataUrl }),
     });
     toast.success("已儲存簽名");
+  }
+
+  async function resyncShopify() {
+    setResyncing(true);
+    try {
+      const res = await fetch(`/api/transactions/${transaction.id}/resync`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Resync failed");
+      const okCount = data.shopify?.filter((r: { ok: boolean }) => r.ok).length || 0;
+      const total = data.shopify?.length || 0;
+      if (data.allOk) {
+        toast.success(`Shopify 重新同步成功 ${okCount}/${total}`);
+      } else {
+        toast.warning(`部分仍失敗 ${okCount}/${total}`, {
+          description: "睇 Shopify 同步記錄入面嘅 error 詳情",
+        });
+      }
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) {
+      toast.error("Resync 失敗", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setResyncing(false);
+    }
   }
 
   async function settle() {
@@ -215,6 +267,71 @@ export function CheckoutView({
           )}
         </CardContent>
       </Card>
+
+      {isSettled && syncResults.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ShoppingBag className="h-4 w-4" />
+                Shopify 同步記錄
+              </CardTitle>
+              {syncFailures.length === 0 ? (
+                <Badge variant="success">
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  全部成功
+                </Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={resyncing}
+                  onClick={resyncShopify}
+                >
+                  {resyncing ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <RefreshCw />
+                  )}
+                  重試 {syncFailures.length} 張失敗
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-1 text-xs">
+            {syncResults.map((r, i) => (
+              <div
+                key={i}
+                className={`flex items-start justify-between gap-2 rounded p-1.5 ${
+                  r.ok
+                    ? "bg-emerald-50 text-emerald-900"
+                    : "bg-red-50 text-red-900"
+                }`}
+              >
+                <div className="flex-1">
+                  <p className="font-medium">{r.name}</p>
+                  {r.sku && <p className="opacity-70">SKU: {r.sku}</p>}
+                  {!r.ok && r.error && <p className="opacity-90">⚠️ {r.error}</p>}
+                </div>
+                {r.ok && (
+                  <Badge variant="outline" className="text-xs">
+                    {r.matchedBy === "created"
+                      ? "新建"
+                      : r.matchedBy === "name"
+                        ? "按名 match"
+                        : "按 SKU match"}
+                    {" · 庫存"}
+                    {r.newQuantity ?? "?"}
+                  </Badge>
+                )}
+                {!r.ok && (
+                  <AlertTriangle className="h-3 w-3 shrink-0 text-red-700" />
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="cards">
         <TabsList>

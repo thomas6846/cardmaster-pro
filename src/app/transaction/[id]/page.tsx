@@ -38,6 +38,7 @@ export default async function TransactionPage({
           totalAmount: tx.totalAmount,
           signatureData: tx.signatureData,
           shopifySynced: tx.shopifySynced,
+          shopifySyncLog: tx.shopifySyncLog,
           settledAt: tx.settledAt?.toISOString() || null,
           cards: tx.cards.map((c) => ({
             id: c.id,
