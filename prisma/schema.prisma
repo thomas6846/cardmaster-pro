@@ -1,0 +1,206 @@
+// CardMaster Pro — Prisma schema (Postgres / Neon)
+// Hosts on Vercel → Neon Postgres in ap-southeast-1 (Singapore).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Prisma migrate uses a direct connection; runtime uses pooled.
+  directUrl = env("DATABASE_DIRECT_URL")
+}
+
+// ============================================================================
+// Auth.js v5 standard models (CredentialsProvider hashes password locally).
+// ============================================================================
+
+enum Role {
+  STAFF
+  SUPERVISOR
+  ADMIN
+}
+
+model User {
+  id            String        @id @default(cuid())
+  name          String?
+  email         String        @unique
+  emailVerified DateTime?
+  passwordHash  String?       // bcrypt; null when only OAuth
+  image         String?
+  role          Role          @default(STAFF)
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  cardsScanned  Card[]        @relation("CardScannedBy")
+  txCreated     Transaction[] @relation("TxCreatedBy")
+  txApproved    Transaction[] @relation("TxApprovedBy")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================================================
+// Card — a single scanned card record (one row per scan).
+// ============================================================================
+model Card {
+  id               String       @id @default(cuid())
+  name             String
+  setCode          String?
+  rarity           String?
+  language         String?
+  imageUrl         String       @db.Text
+  imageUrls        Json?
+  condition        String       @default("A")
+  marketPrice      Float        @default(0)
+  marketCurrency   String       @default("HKD")
+  marketSource     String       @default("SNKRDUNK")
+  marketReference  String?      @db.Text
+  inventoryCount   Int          @default(0)
+  shopifySku       String?
+  shopifyVariantId String?
+  quotedPrice      Float        @default(0)
+  finalPrice       Float?
+  aiRaw            String?      @db.Text
+  notes            String?      @db.Text
+  status           String       @default("pending")
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  transaction      Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  transactionId    String?
+
+  scannedBy        User?        @relation("CardScannedBy", fields: [scannedById], references: [id])
+  scannedById      String?
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// Transaction — one buyback session with a customer.
+// ============================================================================
+model Transaction {
+  id              String    @id @default(cuid())
+  transactionNo   String    @unique
+  approvalToken   String    @unique
+  customerName    String?
+  customerPhone   String?
+  customerIdLast4 String?
+  totalAmount     Float     @default(0)
+  status          String    @default("draft")
+
+  staffName       String?
+  supervisorName  String?
+  supervisorNote  String?   @db.Text
+  signatureData   String?   @db.Text
+  pdfPath         String?
+  shopifySynced   Boolean   @default(false)
+  shopifySyncLog  String?   @db.Text
+  telegramSent    Boolean   @default(false)
+  telegramMsgId   String?
+  approvedAt      DateTime?
+  settledAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  cards           Card[]
+
+  createdBy       User?     @relation("TxCreatedBy", fields: [createdById], references: [id])
+  createdById     String?
+  approvedBy      User?     @relation("TxApprovedBy", fields: [approvedById], references: [id])
+  approvedById    String?
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// Settings — keyed config. Use key="config" for the singleton main row.
+// ============================================================================
+model Settings {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  budgetTotal     Float    @default(50000)
+  budgetUsed      Float    @default(0)
+  conditionS      Float    @default(1.0)
+  conditionA      Float    @default(0.9)
+  conditionB      Float    @default(0.8)
+  conditionC      Float    @default(0.7)
+  conditionD      Float    @default(0.5)
+  baseMargin      Float    @default(0.65)
+  highStockFactor Float    @default(0.85)
+  lowStockFactor  Float    @default(1.10)
+  highStockThresh Int      @default(10)
+  lowStockThresh  Int      @default(2)
+  telegramChatId  String?
+  shopifyShop     String?
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================================================
+// AuditLog — append-only operational trail.
+// ============================================================================
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String
+  actor      String
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// SnkrdunkPriceCache — short-lived cache of scraped prices to avoid burning
+// ScraperAPI credits on repeat lookups for the same card.
+// ============================================================================
+model SnkrdunkPriceCache {
+  id              String   @id @default(cuid())
+  queryKey        String   @unique // normalised "name|setCode" key
+  priceJpy        Float
+  priceHkd        Float
+  sampleSize      Int?
+  reference       String?  @db.Text
+  scrapedAt       DateTime @default(now())
+
+  @@index([scrapedAt])
+}
