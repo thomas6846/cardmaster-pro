@@ -33,20 +33,16 @@
 
 ---
 
-## 5. ScraperAPI (SNKRDUNK 代理) — **可選**
+## 5. SNKRDUNK Scraper — **你自己寫**
 
-> 💡 我哋已經加咗「**員工手動 override 市價**」嘅 UI，所以 ScraperAPI 唔係必須。
-> 你可以：
-> - **方案 A**：唔填 `SCRAPERAPI_KEY`，全程用員工手動 input 市價（員工撳「SNKRDUNK」連結 → 喺 phone 睇真實價 → type 入系統）。$0/月。
-> - **方案 B**：填 ScraperAPI key，AI 識卡後自動 fetch 市價，員工只需 confirm。fetch 唔到時 fallback 到手動。
->
-> 建議先用方案 A 試一兩個禮拜睇真實使用情況，再決定要唔要俾 ScraperAPI $49/月。
+唔用第三方 service，由你寫嘅 scraper 喺 [`src/lib/scraper.ts`](./src/lib/scraper.ts) 入面。
 
-如要方案 B：
-1. 去 [scraperapi.com](https://www.scraperapi.com/) → **Start Free Trial**（5000 free credits 試用）
-2. 試用滿意之後升 **Hobby $49/mo**：100k credits/月 + JS rendering + 國家選擇
-3. Dashboard 攞 **API Key**
-4. 注意：plan 要包含 **JS rendering** 同 **JP IP**
+- Default `fetchSnkrdunkPrice()` return `null`，即系統當「冇 scraper」處理：
+  - Cache 有就用 cache
+  - 冇就 fallback 去 deterministic mock
+  - 員工任何時候都可以喺 UI 手動 override 市價
+- 你 implement 完之後，return `{ jpy, sampleSize?, reference? }`，系統自動 cache 6 小時 + 計入報價公式
+- 如果你嘅 scraper 需要 env var（cookie / proxy URL 等），喺 `src/lib/scraper.ts` 入面讀 `process.env.XXX`，Railway Variables 入面同步加
 
 ---
 
@@ -107,7 +103,7 @@
 - [ ] GitHub repo URL：____________________________________
 - [ ] Railway account ✅（你已有）
 - [ ] Anthropic API key + credit ≥ $20 ✅（你已有）
-- [ ] ScraperAPI key（可選，留空都得）
+- [ ] SNKRDUNK scraper（你自己 implement `src/lib/scraper.ts`，可後補）
 - [ ] Shopify SHOP + TOKEN + LOCATION_ID
 - [ ] Telegram BOT_TOKEN + CHAT_ID
 - [ ] 自訂 domain（可選）：____________________________________

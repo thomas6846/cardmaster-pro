@@ -51,12 +51,11 @@ git push -u origin main
 | `SHOPIFY_ADMIN_TOKEN` | `shpat_...` |
 | `SHOPIFY_LOCATION_ID` | location ID 數字 |
 | `SHOPIFY_API_VERSION` | `2025-01` |
-| `SCRAPERAPI_KEY` | ScraperAPI key（可選，唔填會 fallback mock + 你可以員工手動 override 價）|
-| `SCRAPERAPI_COUNTRY` | `jp` |
 | `TELEGRAM_BOT_TOKEN` | bot token |
 | `TELEGRAM_CHAT_ID` | chat id（負數）|
 | `JPY_TO_HKD_RATE` | `0.0505` |
 | `NODE_ENV` | `production` |
+| *(scraper env)* | 如你嘅 `src/lib/scraper.ts` 用到 cookie / proxy URL，喺度加 |
 
 ---
 
@@ -119,7 +118,7 @@ Railway 預設可能用 `npm run start` 但我哋要先 push schema + generate P
 - **Railway → Deployments**：每次 build / runtime log
 - **Railway → Metrics**：CPU / RAM / Network
 - **Postgres service → Connect**：直接連 DB 查資料
-- **ScraperAPI Dashboard**：credit 用量 + 成功率
+- **Railway → Logs**：scraper warning / 失敗會 `[snkrdunk] custom scraper threw ...`
 
 ---
 
@@ -128,4 +127,4 @@ Railway 預設可能用 `npm run start` 但我哋要先 push schema + generate P
 - ⚠️ **第一次 deploy 之前**，再 confirm `.env.local` 唔好揦住真 secret（已被 gitignore，但保險）
 - ⚠️ 改 `prisma/schema.prisma` 之後 → push 上 GitHub → Railway auto redeploy → start command 會跑 `prisma db push`
 - ⚠️ 密碼 `214209` 係 6 位 PIN，比建議 8 位短。風險係容易被暴力破解 — 上線後盡早 ADMIN → 改長密碼
-- ⚠️ ScraperAPI Free trial 5000 credits 可以試 100 次查價（每 6 小時 cache）。如果你想試吓會唔會用得著 paid plan，可以唔填 `SCRAPERAPI_KEY`，全程用「員工手動入市價」嘅 fallback
+- ⚠️ `src/lib/scraper.ts` 預設 return `null`，即 launch 時系統會行「mock + 員工手動 override」。寫好你嘅 scraper 之後 push 上 GitHub，Railway auto redeploy 就會即時生效
