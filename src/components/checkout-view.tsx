@@ -54,6 +54,7 @@ interface CheckoutTx {
   customerIdLast4?: string | null;
   staffName?: string | null;
   supervisorName?: string | null;
+  locationName?: string | null;
   totalAmount: number;
   signatureData?: string | null;
   shopifySynced: boolean;
@@ -169,6 +170,7 @@ export function CheckoutView({
               <CardDescription>
                 店員：{transaction.staffName || "—"}
                 {transaction.supervisorName ? ` · 主管：${transaction.supervisorName}` : ""}
+                {transaction.locationName ? ` · 入庫：${transaction.locationName}` : ""}
               </CardDescription>
             </div>
             <StatusBadge status={transaction.status} />

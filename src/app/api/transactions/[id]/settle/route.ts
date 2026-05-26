@@ -39,7 +39,9 @@ export async function POST(
       buyQuantity: 1,
     }));
 
-  const shopifyResults = await syncPurchaseToShopify(shopifyInputs);
+  const shopifyResults = await syncPurchaseToShopify(shopifyInputs, {
+    locationId: tx.locationId,
+  });
 
   await consumeBudget(total);
 

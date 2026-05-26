@@ -132,6 +132,8 @@ model Transaction {
   pdfPath         String?
   shopifySynced   Boolean   @default(false)
   shopifySyncLog  String?   @db.Text
+  locationId      String?   // Shopify Location ID this buyback inventories to
+  locationName    String?
   telegramSent    Boolean   @default(false)
   telegramMsgId   String?
   approvedAt      DateTime?

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
+import { STORE_LOCATIONS } from "@/lib/locations";
 import type { Condition } from "@/lib/types";
 
 interface ScannedCard {
@@ -76,6 +77,18 @@ export function StaffScanner({
   const [scanMode, setScanMode] = useState<"single" | "bulk">("single");
   const [condition, setCondition] = useState<Condition>("A");
   const [cards, setCards] = useState<ScannedCard[]>([]);
+  // Remembers the last-chosen store on this device so staff don't re-pick
+  // every transaction. Hydrates from localStorage after mount.
+  const [locationId, setLocationId] = useState<string>(STORE_LOCATIONS[0].id);
+  useEffect(() => {
+    const saved = localStorage.getItem("cardmaster:lastLocationId");
+    if (saved && STORE_LOCATIONS.some((l) => l.id === saved)) {
+      setLocationId(saved);
+    }
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("cardmaster:lastLocationId", locationId);
+  }, [locationId]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -220,6 +233,7 @@ export function StaffScanner({
           cardIds: cards.map((c) => c.id),
           customerName: customerName || undefined,
           customerPhone: customerPhone || undefined,
+          locationId,
         }),
       });
       const createJson = await create.json();
@@ -272,7 +286,22 @@ export function StaffScanner({
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <Label>入庫店鋪 *</Label>
+                <Select value={locationId} onValueChange={setLocationId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STORE_LOCATIONS.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label>客人姓名</Label>
                 <Input

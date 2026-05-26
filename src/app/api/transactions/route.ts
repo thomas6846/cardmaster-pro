@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { generateTransactionNo, shortId } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
+import { findLocation } from "@/lib/locations";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,7 @@ const Body = z.object({
   customerName: z.string().optional(),
   customerPhone: z.string().optional(),
   customerIdLast4: z.string().optional(),
+  locationId: z.string().min(1, "請揀返入庫店鋪"),
 });
 
 export async function GET() {
@@ -51,6 +53,13 @@ export async function POST(req: Request) {
   );
 
   const staffName = session.user.name || session.user.email || "staff";
+  const location = findLocation(parsed.data.locationId);
+  if (!location) {
+    return NextResponse.json(
+      { error: `Unknown location id: ${parsed.data.locationId}` },
+      { status: 400 },
+    );
+  }
 
   const tx = await prisma.transaction.create({
     data: {
@@ -63,6 +72,8 @@ export async function POST(req: Request) {
       totalAmount: total,
       status: "draft",
       createdById: session.user.id,
+      locationId: location.id,
+      locationName: location.name,
       cards: {
         connect: cards.map((c) => ({ id: c.id })),
       },

@@ -63,6 +63,7 @@ export default async function HistoryPage() {
                       <CardDescription>
                         {formatDate(tx.createdAt)} · 店員 {tx.staffName || "—"} ·{" "}
                         {tx.customerName || "客人未填"}
+                        {tx.locationName ? ` · ${tx.locationName}` : ""}
                       </CardDescription>
                     </div>
                     <Badge variant={s.variant}>{s.label}</Badge>

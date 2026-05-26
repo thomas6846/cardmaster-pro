@@ -34,6 +34,7 @@ export default async function TransactionPage({
           customerIdLast4: tx.customerIdLast4,
           staffName: tx.staffName,
           supervisorName: tx.supervisorName,
+          locationName: tx.locationName,
           totalAmount: tx.totalAmount,
           signatureData: tx.signatureData,
           shopifySynced: tx.shopifySynced,

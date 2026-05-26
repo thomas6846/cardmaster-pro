@@ -81,11 +81,15 @@ interface SyncResult {
 
 /**
  * After a transaction settles, push each card back to Shopify:
- *   1. Increment inventory_levels by buyQuantity
+ *   1. Increment inventory_levels at the chosen location by buyQuantity
  *   2. Update inventory_items.cost = costPerItem
+ *
+ * The location can be passed per-call (preferred for multi-store deployments),
+ * else falls back to SHOPIFY_LOCATION_ID env var.
  */
 export async function syncPurchaseToShopify(
   cards: SyncCardInput[],
+  opts: { locationId?: string | null } = {},
 ): Promise<SyncResult[]> {
   if (!isConfigured()) {
     return cards.map((c) => ({
@@ -95,7 +99,7 @@ export async function syncPurchaseToShopify(
     }));
   }
 
-  const locationId = process.env.SHOPIFY_LOCATION_ID;
+  const locationId = opts.locationId || process.env.SHOPIFY_LOCATION_ID;
   const results: SyncResult[] = [];
 
   for (const card of cards) {
