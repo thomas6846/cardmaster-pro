@@ -145,13 +145,39 @@ async function processOne(
     },
   });
 
+  // Past buyback history for same card — gives staff negotiation reference.
+  // Match by canonical setCode primarily (most specific), fall back to name
+  // when setCode is unknown. Only consider settled / sold cards.
+  const history = await prisma.card.findMany({
+    where: {
+      id: { not: card.id },
+      status: "sold",
+      OR: canonicalSetCode
+        ? [
+            { setCode: canonicalSetCode },
+            { name: canonicalName },
+          ]
+        : [{ name: canonicalName }],
+    },
+    select: {
+      id: true,
+      condition: true,
+      finalPrice: true,
+      quotedPrice: true,
+      createdAt: true,
+      transaction: { select: { locationName: true, transactionNo: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+  });
+
   await logAudit({
     action: "SCAN",
     entityType: "Card",
     entityId: card.id,
     actor: staffName || "staff",
-    payload: { recog, verified, market, inventory, quote },
+    payload: { recog, verified, market, inventory, quote, historyCount: history.length },
   });
 
-  return { card, recognition: recog, verified, market, inventory, quote };
+  return { card, recognition: recog, verified, market, inventory, quote, history };
 }

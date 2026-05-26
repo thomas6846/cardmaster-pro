@@ -57,6 +57,15 @@ interface ConditionDetails {
   notes?: string;
 }
 
+interface HistoryEntry {
+  id: string;
+  condition: string;
+  finalPrice: number | null;
+  quotedPrice: number;
+  createdAt: string;
+  transaction?: { locationName?: string | null; transactionNo: string } | null;
+}
+
 interface ScannedCard {
   id: string;
   name: string;
@@ -71,6 +80,7 @@ interface ScannedCard {
   finalPrice?: number | null;
   aiConditionEstimate?: string | null;
   conditionDetails?: ConditionDetails | null;
+  history?: HistoryEntry[];
 }
 
 const CONDITIONS: { value: Condition; label: string }[] = [
@@ -148,20 +158,23 @@ export function StaffScanner({
           return;
         }
 
-        const newCards: ScannedCard[] = results.map((r) => ({
-          id: r.card.id,
-          name: r.card.name,
-          setCode: r.card.setCode,
-          rarity: r.card.rarity,
-          condition: r.card.condition,
-          imageUrl: r.card.imageUrl,
-          marketPrice: r.card.marketPrice,
-          marketSource: r.card.marketSource,
-          inventoryCount: r.card.inventoryCount,
-          quotedPrice: r.card.quotedPrice,
-          aiConditionEstimate: r.card.aiConditionEstimate,
-          conditionDetails: r.card.conditionDetails,
-        }));
+        const newCards: ScannedCard[] = results.map(
+          (r: { card: ScannedCard; history?: HistoryEntry[] }) => ({
+            id: r.card.id,
+            name: r.card.name,
+            setCode: r.card.setCode,
+            rarity: r.card.rarity,
+            condition: r.card.condition,
+            imageUrl: r.card.imageUrl,
+            marketPrice: r.card.marketPrice,
+            marketSource: r.card.marketSource,
+            inventoryCount: r.card.inventoryCount,
+            quotedPrice: r.card.quotedPrice,
+            aiConditionEstimate: r.card.aiConditionEstimate,
+            conditionDetails: r.card.conditionDetails,
+            history: r.history,
+          }),
+        );
 
         setCards((prev) => [...newCards, ...prev]);
 
@@ -666,9 +679,46 @@ function CardRow({
           {card.conditionDetails && (
             <ConditionBreakdown details={card.conditionDetails} />
           )}
+          {card.history && card.history.length > 0 && (
+            <BuybackHistory history={card.history} />
+          )}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function BuybackHistory({ history }: { history: HistoryEntry[] }) {
+  const prices = history.map((h) => h.finalPrice ?? h.quotedPrice);
+  const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  return (
+    <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-2 text-xs">
+      <div className="mb-1 flex items-center justify-between font-medium text-emerald-900">
+        <span>📈 過往買取參考 ({history.length})</span>
+        <span>
+          平均 {formatCurrency(avg)} · 範圍 {formatCurrency(min)}–{formatCurrency(max)}
+        </span>
+      </div>
+      <div className="space-y-0.5 text-emerald-800/80">
+        {history.map((h) => (
+          <div key={h.id} className="flex justify-between gap-2">
+            <span>
+              {new Date(h.createdAt).toLocaleDateString("zh-HK", {
+                month: "2-digit",
+                day: "2-digit",
+              })}{" "}
+              · Cond {h.condition}
+              {h.transaction?.locationName ? ` · ${h.transaction.locationName}` : ""}
+            </span>
+            <span className="font-semibold">
+              {formatCurrency(h.finalPrice ?? h.quotedPrice)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
