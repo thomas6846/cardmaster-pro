@@ -488,7 +488,13 @@ export function StaffScanner({
           <CardContent>
             <div className="h-2 overflow-hidden rounded-full bg-secondary">
               <div
-                className="h-full bg-primary transition-all"
+                className={`h-full transition-all ${
+                  budgetTotal > 0 && budgetRemaining / budgetTotal < 0.2
+                    ? "bg-destructive"
+                    : budgetTotal > 0 && budgetRemaining / budgetTotal < 0.5
+                      ? "bg-amber-500"
+                      : "bg-primary"
+                }`}
                 style={{
                   width: `${
                     budgetTotal > 0
@@ -498,6 +504,11 @@ export function StaffScanner({
                 }}
               />
             </div>
+            {budgetTotal > 0 && budgetRemaining / budgetTotal < 0.2 && (
+              <p className="mt-2 text-xs text-destructive font-medium">
+                ⚠️ 預算少於 20%，報價會自動向下調整
+              </p>
+            )}
           </CardContent>
         </Card>
 

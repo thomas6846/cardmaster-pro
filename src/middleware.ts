@@ -11,6 +11,8 @@ const PUBLIC_PATHS = [
   "/api/setup",
   // Shopify calls our callback from their server — no user session
   "/api/shopify/callback",
+  // Cron jobs use bearer-token auth, not user session
+  "/api/cron",
   "/_next",
   "/favicon.ico",
 ];
