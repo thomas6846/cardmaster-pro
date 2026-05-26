@@ -61,10 +61,18 @@ export async function PATCH(
     newQuoted = q.finalPrice;
   }
 
+  // Track when staff explicitly disagree with the AI's condition — surfaces
+  // accuracy issues + builds training labels for a future condition model.
+  const conditionChangedByStaff =
+    parsed.data.condition && parsed.data.condition !== existing.condition;
+
   const updated = await prisma.card.update({
     where: { id },
     data: {
       ...(parsed.data.condition ? { condition: parsed.data.condition } : {}),
+      ...(conditionChangedByStaff
+        ? { conditionConfirmedByStaff: true }
+        : {}),
       ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
       ...(parsed.data.status ? { status: parsed.data.status } : {}),
       ...(parsed.data.marketPrice !== undefined

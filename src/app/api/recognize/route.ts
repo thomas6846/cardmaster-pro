@@ -7,6 +7,7 @@ import { getInventoryBySku } from "@/lib/shopify";
 import { quoteCard } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { verifyCard } from "@/lib/cardverify";
 import type { Condition, RecognizedCard, InventoryLookup } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -88,9 +89,17 @@ async function processOne(
   staffId: string,
   staffName?: string,
 ) {
-  const sku = cleanSku(recog.setCode);
+  // Cross-check Claude's recognition against public card databases. When a
+  // match exists we use the canonical name + setCode instead of the AI's
+  // (which sometimes hallucinates). Falls through silently if no match.
+  const verified = await verifyCard(recog.name).catch(() => null);
+  const canonicalName = verified?.canonicalName || recog.name;
+  const canonicalSetCode = verified?.canonicalSetCode || recog.setCode;
+  const canonicalRarity = verified?.rarity || recog.rarity;
+
+  const sku = cleanSku(canonicalSetCode);
   const [market, inventory] = await Promise.all([
-    lookupMarketPrice({ name: recog.name, setCode: recog.setCode }),
+    lookupMarketPrice({ name: canonicalName, setCode: canonicalSetCode }),
     sku
       ? getInventoryBySku(sku)
       : Promise.resolve<InventoryLookup>({ count: 0 }),
@@ -102,24 +111,35 @@ async function processOne(
     inventoryCount: inventory.count,
   });
 
+  // Prefer Claude's PSA-mapped grade as the starting condition; staff can
+  // still override in the UI. Falls back to the body-supplied default.
+  const aiSuggestedCondition = recog.condition?.estimatedGrade as Condition | undefined;
+  const initialCondition = aiSuggestedCondition || condition;
+
   const card = await prisma.card.create({
     data: {
-      name: recog.name,
-      setCode: recog.setCode,
-      rarity: recog.rarity,
+      name: canonicalName,
+      setCode: canonicalSetCode,
+      rarity: canonicalRarity,
       language: recog.language,
       imageUrl: imageDataUrl,
-      condition,
+      condition: initialCondition,
+      aiConditionEstimate: aiSuggestedCondition,
+      conditionDetails: recog.condition
+        ? (JSON.parse(JSON.stringify(recog.condition)) as object)
+        : undefined,
       marketPrice: market.marketPrice,
       marketCurrency: market.currency,
       marketSource: market.source,
-      marketReference: market.reference,
+      marketReference: verified?.referenceUrl || market.reference,
       inventoryCount: inventory.count,
-      shopifySku: inventory.sku,
+      shopifySku: inventory.sku || sku,
       shopifyVariantId: inventory.variantId,
       quotedPrice: quote.finalPrice,
       aiRaw: recog.raw,
-      notes: recog.notes,
+      notes: verified
+        ? `Verified via ${verified.source}${recog.notes ? " · " + recog.notes : ""}`
+        : recog.notes,
       status: "quoted",
       scannedById: staffId,
     },
@@ -130,8 +150,8 @@ async function processOne(
     entityType: "Card",
     entityId: card.id,
     actor: staffName || "staff",
-    payload: { recog, market, inventory, quote },
+    payload: { recog, verified, market, inventory, quote },
   });
 
-  return { card, recognition: recog, market, inventory, quote };
+  return { card, recognition: recog, verified, market, inventory, quote };
 }

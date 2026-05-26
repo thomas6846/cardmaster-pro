@@ -97,6 +97,15 @@ model Card {
   quotedPrice      Float        @default(0)
   finalPrice       Float?
   aiRaw            String?      @db.Text
+  // Structured PSA-style breakdown from Claude — centering, corners, edges,
+  // surface, estimatedPsa. Lets staff sanity-check the grade.
+  conditionDetails Json?
+  // Claude's initial condition suggestion (S/A/B/C/D). Compare against final
+  // `condition` field — if they differ, staff overrode the AI. Used to train
+  // future condition models + measure AI accuracy.
+  aiConditionEstimate String?
+  // Did a human confirm or correct the AI's condition?
+  conditionConfirmedByStaff Boolean @default(false)
   notes            String?      @db.Text
   status           String       @default("pending")
   createdAt        DateTime     @default(now())

@@ -42,6 +42,21 @@ import { formatCurrency } from "@/lib/utils";
 import { STORE_LOCATIONS } from "@/lib/locations";
 import type { Condition } from "@/lib/types";
 
+interface ConditionDetails {
+  centering?: { front?: string; back?: string };
+  corners?: {
+    topLeft?: string;
+    topRight?: string;
+    bottomLeft?: string;
+    bottomRight?: string;
+  };
+  edges?: string;
+  surface?: string;
+  estimatedPsa?: number;
+  estimatedGrade?: string;
+  notes?: string;
+}
+
 interface ScannedCard {
   id: string;
   name: string;
@@ -54,6 +69,8 @@ interface ScannedCard {
   inventoryCount: number;
   quotedPrice: number;
   finalPrice?: number | null;
+  aiConditionEstimate?: string | null;
+  conditionDetails?: ConditionDetails | null;
 }
 
 const CONDITIONS: { value: Condition; label: string }[] = [
@@ -142,6 +159,8 @@ export function StaffScanner({
           marketSource: r.card.marketSource,
           inventoryCount: r.card.inventoryCount,
           quotedPrice: r.card.quotedPrice,
+          aiConditionEstimate: r.card.aiConditionEstimate,
+          conditionDetails: r.card.conditionDetails,
         }));
 
         setCards((prev) => [...newCards, ...prev]);
@@ -612,7 +631,15 @@ function CardRow({
           </div>
           <div className="flex items-end justify-between gap-2">
             <div className="w-44">
-              <Label className="text-xs">Condition</Label>
+              <Label className="text-xs">
+                Condition
+                {card.aiConditionEstimate &&
+                  card.aiConditionEstimate !== card.condition && (
+                    <span className="ml-1 text-amber-600">
+                      (AI 估 {card.aiConditionEstimate})
+                    </span>
+                  )}
+              </Label>
               <Select
                 value={card.condition}
                 onValueChange={(v) => onConditionChange(v as Condition)}
@@ -636,8 +663,65 @@ function CardRow({
               </p>
             </div>
           </div>
+          {card.conditionDetails && (
+            <ConditionBreakdown details={card.conditionDetails} />
+          )}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ConditionBreakdown({ details }: { details: ConditionDetails }) {
+  const [open, setOpen] = useState(false);
+  const psa = details.estimatedPsa;
+  return (
+    <div className="rounded-md border bg-muted/40 p-2 text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between gap-2 text-left font-medium"
+      >
+        <span>
+          🔍 AI Condition 拆解
+          {psa !== undefined && (
+            <span className="ml-2 text-muted-foreground">est. PSA {psa}</span>
+          )}
+        </span>
+        <span className="text-muted-foreground">{open ? "▼" : "▶"}</span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1 text-muted-foreground">
+          {details.centering && (
+            <div>
+              <strong className="text-foreground">Centering:</strong>{" "}
+              前 {details.centering.front || "?"} / 後 {details.centering.back || "?"}
+            </div>
+          )}
+          {details.corners && (
+            <div>
+              <strong className="text-foreground">Corners:</strong>{" "}
+              TL {details.corners.topLeft || "?"} · TR {details.corners.topRight || "?"}
+              · BL {details.corners.bottomLeft || "?"} · BR {details.corners.bottomRight || "?"}
+            </div>
+          )}
+          {details.edges && (
+            <div>
+              <strong className="text-foreground">Edges:</strong> {details.edges}
+            </div>
+          )}
+          {details.surface && (
+            <div>
+              <strong className="text-foreground">Surface:</strong> {details.surface}
+            </div>
+          )}
+          {details.notes && (
+            <div className="text-amber-700">
+              <strong>⚠️ {details.notes}</strong>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -9,21 +9,46 @@ function getClient(): Anthropic | null {
   return new Anthropic({ apiKey: key });
 }
 
-const RECOGNITION_PROMPT = `You are an expert trading card grader. The user will give you a photo of a single trading card (most likely Pokémon, One Piece, Yu-Gi-Oh!, or Weiss Schwarz).
+const RECOGNITION_PROMPT = `You are an expert PSA-trained trading card grader and identifier. The user will give you a photo of a single trading card (most likely Pokémon, One Piece, Yu-Gi-Oh!, or Weiss Schwarz — JP cards are common).
 
-Extract the following fields and return STRICT JSON with no prose, no markdown fences, no commentary:
+Return STRICT JSON only — no prose, no markdown fences, no commentary:
 
 {
-  "name": "the card's exact printed name (use English if available, else original)",
-  "setCode": "the set + collector number as printed (e.g. 'SV1a-001', 'OP01-001'), or null",
+  "name": "exact printed name (English if available, else original language)",
+  "setCode": "set + collector number AS PRINTED on the card (e.g. 'SV1a-001', 'OP01-001'). DO NOT GUESS — if you cannot read the number clearly, set this to null. NEVER write descriptive text like 'SV-P or SV2a (illustration rare)'.",
   "rarity": "one of: C, U, R, RR, RRR, SR, SAR, SSR, UR, HR, SEC, PROMO, UNKNOWN",
   "language": "JP / EN / CN / KR / Other",
   "confidence": 0.0-1.0,
-  "notes": "any anomalies you notice — corner wear, edging, centering, scratches, suspected counterfeit, etc."
+  "condition": {
+    "centering": { "front": "e.g. '55/45'", "back": "e.g. '60/40' or null if back not visible" },
+    "corners": {
+      "topLeft":     "none / light / medium / heavy whitening or softening",
+      "topRight":    "...",
+      "bottomLeft":  "...",
+      "bottomRight": "..."
+    },
+    "edges":   "describe chips / nicks / whitening along the four edges",
+    "surface": "scratches / print lines / foil scratches / denting / fingerprints",
+    "estimatedPsa": 1-10,
+    "estimatedGrade": "S / A / B / C / D — your final mapping (S=mint, A=near mint, B=excellent, C=good, D=played)",
+    "notes": "anything else worth flagging — suspected counterfeit, sleeve glare obscuring view, etc."
+  },
+  "notes": "general observations not covered above"
 }
 
-If multiple cards are in frame, describe only the most prominent one.
-If you cannot read the card at all, return all fields as null/UNKNOWN/0.`;
+GRADING SCALE MAPPING:
+- S (PSA 10):    pristine, factory-fresh, no defects visible
+- A (PSA 8-9):   near-mint, very minor wear under scrutiny
+- B (PSA 6-7):   excellent, light wear visible but no major flaws
+- C (PSA 4-5):   good, multiple visible flaws but intact
+- D (PSA 1-3):   played, heavy wear / creasing / damage
+
+RULES:
+- If you cannot clearly read setCode, set it to null. NEVER invent.
+- If a corner or edge isn't visible in the photo, write "not visible".
+- estimatedPsa is your honest grade — be conservative when in doubt.
+- If multiple cards are in frame, grade only the most prominent one.
+- For sleeved cards, note that the sleeve may obscure surface defects.`;
 
 const BULK_RECOGNITION_PROMPT = `You are an expert trading card grader. The user has provided ONE photo containing MULTIPLE trading cards laid out flat (typically 2-12 cards in a grid, row, or fan). Likely TCGs: Pokémon, One Piece, Yu-Gi-Oh!, Weiss Schwarz.
 
@@ -194,6 +219,7 @@ export async function recognizeCard(imageDataOrUrl: string): Promise<RecognizedC
     language: (parsed.language as RecognizedCard["language"]) || "JP",
     confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
     notes: (parsed.notes as string) || undefined,
+    condition: parsed.condition as RecognizedCard["condition"],
     raw,
   };
 }

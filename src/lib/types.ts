@@ -31,6 +31,23 @@ export type TransactionStatus =
   | "settled"
   | "cancelled";
 
+export interface ConditionAssessment {
+  // Centering: front/back % offset. 50/50 = perfectly centered.
+  centering?: { front?: string; back?: string };
+  // Corners: each corner whitening / softening level.
+  corners?: { topLeft?: string; topRight?: string; bottomLeft?: string; bottomRight?: string };
+  // Edges: chips / nicks along the four sides.
+  edges?: string;
+  // Surface: scratches, print lines, foil scratches, denting.
+  surface?: string;
+  // Approximate PSA 1-10 grade Claude estimates.
+  estimatedPsa?: number;
+  // Mapped to our 5-tier scale (S=mint / A=NM / B=excellent / C=good / D=played).
+  estimatedGrade?: Condition;
+  // Free-form observations / concerns.
+  notes?: string;
+}
+
 export interface RecognizedCard {
   name: string;
   setCode?: string;
@@ -38,6 +55,7 @@ export interface RecognizedCard {
   language?: "JP" | "EN" | "CN" | "KR" | "Other";
   confidence: number;
   notes?: string;
+  condition?: ConditionAssessment;
   raw: string;
 }
 
