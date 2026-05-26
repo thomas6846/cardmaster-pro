@@ -172,7 +172,21 @@ model Settings {
   lowStockThresh  Int      @default(2)
   telegramChatId  String?
   shopifyShop     String?
+  shopifyAccessToken String?  @db.Text
+  shopifyInstalledAt DateTime?
+  shopifyScopes      String?  @db.Text
   updatedAt       DateTime @updatedAt
+}
+
+// Single-use OAuth state for Shopify install CSRF protection. Cleaned up
+// when the callback redeems it (or by TTL — 10 min).
+model ShopifyOauthState {
+  id        String   @id @default(cuid())
+  state     String   @unique
+  shop      String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 // ============================================================================

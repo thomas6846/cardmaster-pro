@@ -9,6 +9,8 @@ const PUBLIC_PATHS = [
   "/setup",
   "/api/auth",
   "/api/setup",
+  // Shopify calls our callback from their server — no user session
+  "/api/shopify/callback",
   "/_next",
   "/favicon.ico",
 ];

@@ -1,21 +1,41 @@
+import { prisma } from "./prisma";
 import type { InventoryLookup } from "./types";
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION || "2025-01";
 
-function isConfigured(): boolean {
-  return Boolean(process.env.SHOPIFY_SHOP && process.env.SHOPIFY_ADMIN_TOKEN);
+interface ShopifyCreds {
+  shop: string;
+  token: string;
 }
 
-function endpoint(path: string): string {
-  const shop = process.env.SHOPIFY_SHOP!.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  return `https://${shop}/admin/api/${API_VERSION}/${path.replace(/^\//, "")}`;
+/**
+ * Resolves Shopify credentials. Prefers OAuth-stored creds in the Settings
+ * table (set by /api/shopify/callback), falls back to env vars. Returns null
+ * when no credentials are available — callers should treat that as "Shopify
+ * sync disabled" and degrade gracefully.
+ */
+async function getCreds(): Promise<ShopifyCreds | null> {
+  const settings = await prisma.settings.findUnique({ where: { key: "config" } });
+  const shop = settings?.shopifyShop || process.env.SHOPIFY_SHOP;
+  const token =
+    settings?.shopifyAccessToken || process.env.SHOPIFY_ADMIN_TOKEN;
+  if (!shop || !token) return null;
+  return {
+    shop: shop.replace(/^https?:\/\//, "").replace(/\/$/, ""),
+    token,
+  };
 }
 
-async function shopifyFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(endpoint(path), {
+async function shopifyFetch<T>(
+  creds: ShopifyCreds,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const url = `https://${creds.shop}/admin/api/${API_VERSION}/${path.replace(/^\//, "")}`;
+  const res = await fetch(url, {
     ...init,
     headers: {
-      "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN!,
+      "X-Shopify-Access-Token": creds.token,
       "Content-Type": "application/json",
       Accept: "application/json",
       ...(init?.headers || {}),
@@ -34,7 +54,8 @@ async function shopifyFetch<T>(path: string, init?: RequestInit): Promise<T> {
  * configured — the pricing engine will treat that as "low stock" naturally.
  */
 export async function getInventoryBySku(sku: string): Promise<InventoryLookup> {
-  if (!isConfigured()) {
+  const creds = await getCreds();
+  if (!creds) {
     return { count: 0, sku };
   }
   try {
@@ -46,7 +67,7 @@ export async function getInventoryBySku(sku: string): Promise<InventoryLookup> {
         inventory_item_id: number;
         inventory_quantity: number;
       }>;
-    }>(`variants.json?sku=${encodeURIComponent(sku)}`);
+    }>(creds, `variants.json?sku=${encodeURIComponent(sku)}`);
 
     const variant = variants.variants?.[0];
     if (!variant) return { count: 0, sku };
@@ -91,7 +112,8 @@ export async function syncPurchaseToShopify(
   cards: SyncCardInput[],
   opts: { locationId?: string | null } = {},
 ): Promise<SyncResult[]> {
-  if (!isConfigured()) {
+  const creds = await getCreds();
+  if (!creds) {
     return cards.map((c) => ({
       sku: c.sku,
       ok: false,
@@ -110,7 +132,7 @@ export async function syncPurchaseToShopify(
       if (!inventoryItemId) {
         const variants = await shopifyFetch<{
           variants: Array<{ id: number; inventory_item_id: number }>;
-        }>(`variants.json?sku=${encodeURIComponent(card.sku)}`);
+        }>(creds, `variants.json?sku=${encodeURIComponent(card.sku)}`);
         const v = variants.variants?.[0];
         if (!v) {
           results.push({ sku: card.sku, ok: false, error: "SKU not found" });
@@ -124,7 +146,7 @@ export async function syncPurchaseToShopify(
       if (locationId) {
         const adj = await shopifyFetch<{
           inventory_level: { available: number };
-        }>(`inventory_levels/adjust.json`, {
+        }>(creds, `inventory_levels/adjust.json`, {
           method: "POST",
           body: JSON.stringify({
             location_id: Number(locationId),
@@ -135,7 +157,7 @@ export async function syncPurchaseToShopify(
         newQty = adj.inventory_level?.available;
       }
 
-      await shopifyFetch(`inventory_items/${inventoryItemId}.json`, {
+      await shopifyFetch(creds, `inventory_items/${inventoryItemId}.json`, {
         method: "PUT",
         body: JSON.stringify({
           inventory_item: {
