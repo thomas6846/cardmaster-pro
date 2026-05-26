@@ -6,6 +6,7 @@ import {
   Receipt,
   Sparkles,
   Users,
+  FileSearch,
 } from "lucide-react";
 import {
   Card,
@@ -179,6 +180,15 @@ export default async function Home() {
             title="使用者管理"
             description="新增/停用 店員、主管、管理員"
             cta="管理帳號"
+          />
+        )}
+        {isAdmin && (
+          <ActionCard
+            href="/admin/audit"
+            icon={<FileSearch className="h-6 w-6" />}
+            title="稽核日誌"
+            description="所有 AI 識別、審批、結算、Shopify 同步操作記錄"
+            cta="查看日誌"
           />
         )}
         {!isAdmin && (
