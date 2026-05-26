@@ -76,24 +76,40 @@ export async function getInventoryBySku(sku: string): Promise<InventoryLookup> {
     return { count: 0, sku };
   }
   try {
-    const variants = await shopifyFetch<{
-      variants: Array<{
-        id: number;
-        product_id: number;
-        sku: string;
-        inventory_item_id: number;
-        inventory_quantity: number;
-      }>;
-    }>(creds, `variants.json?sku=${encodeURIComponent(sku)}`);
-
-    const variant = variants.variants?.[0];
-    if (!variant) return { count: 0, sku };
-
+    const data = await shopifyGraphQL<{
+      productVariants: {
+        edges: Array<{
+          node: {
+            id: string;
+            sku: string;
+            product: { id: string };
+            inventoryQuantity: number;
+          };
+        }>;
+      };
+    }>(
+      creds,
+      `query getInv($query: String!) {
+         productVariants(first: 1, query: $query) {
+           edges {
+             node {
+               id
+               sku
+               product { id }
+               inventoryQuantity
+             }
+           }
+         }
+       }`,
+      { query: `sku:${sku}` },
+    );
+    const node = data.productVariants.edges[0]?.node;
+    if (!node) return { count: 0, sku };
     return {
-      count: variant.inventory_quantity,
-      sku: variant.sku,
-      variantId: String(variant.id),
-      productId: String(variant.product_id),
+      count: node.inventoryQuantity,
+      sku: node.sku,
+      variantId: node.id.split("/").pop() as string,
+      productId: node.product.id.split("/").pop() as string,
     };
   } catch (err) {
     console.warn("[shopify] inventory lookup failed", err);
@@ -108,20 +124,47 @@ interface ResolvedVariant {
   matchedBy: "sku" | "name" | "created";
 }
 
-// SKU lookup via REST. Returns null if no variant exists.
+// SKU lookup via GraphQL. The REST /variants.json endpoint was removed in
+// recent Shopify API versions (returns 404), so we use productVariants with
+// a sku: filter — supported since 2024-04.
 async function findVariantBySku(
   creds: ShopifyCreds,
   sku: string,
 ): Promise<ResolvedVariant | null> {
-  const data = await shopifyFetch<{
-    variants: Array<{ id: number; product_id: number; inventory_item_id: number }>;
-  }>(creds, `variants.json?sku=${encodeURIComponent(sku)}`);
-  const v = data.variants?.[0];
-  if (!v) return null;
+  const data = await shopifyGraphQL<{
+    productVariants: {
+      edges: Array<{
+        node: {
+          id: string;
+          sku: string;
+          product: { id: string };
+          inventoryItem: { id: string };
+        };
+      }>;
+    };
+  }>(
+    creds,
+    `query findBySku($query: String!) {
+       productVariants(first: 1, query: $query) {
+         edges {
+           node {
+             id
+             sku
+             product { id }
+             inventoryItem { id }
+           }
+         }
+       }
+     }`,
+    { query: `sku:${sku}` },
+  );
+
+  const node = data.productVariants.edges[0]?.node;
+  if (!node) return null;
   return {
-    variantId: String(v.id),
-    productId: String(v.product_id),
-    inventoryItemId: String(v.inventory_item_id),
+    variantId: node.id.split("/").pop() as string,
+    productId: node.product.id.split("/").pop() as string,
+    inventoryItemId: node.inventoryItem.id.split("/").pop() as string,
     matchedBy: "sku",
   };
 }
