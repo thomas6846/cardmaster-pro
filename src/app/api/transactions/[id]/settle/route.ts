@@ -29,15 +29,16 @@ export async function POST(
     0,
   );
 
-  const shopifyInputs = tx.cards
-    .filter((c) => c.shopifySku)
-    .map((c) => ({
-      sku: c.shopifySku!,
-      variantId: c.shopifyVariantId,
-      inventoryItemId: null,
-      costPerItem: c.finalPrice ?? c.quotedPrice,
-      buyQuantity: 1,
-    }));
+  // Pass every card (not just ones with SKU) — auto-create will handle the
+  // SKU-less ones using the card name.
+  const shopifyInputs = tx.cards.map((c) => ({
+    sku: c.shopifySku || c.setCode || null,
+    name: c.name,
+    rarity: c.rarity,
+    language: c.language,
+    costPerItem: c.finalPrice ?? c.quotedPrice,
+    buyQuantity: 1,
+  }));
 
   const shopifyResults = await syncPurchaseToShopify(shopifyInputs, {
     locationId: tx.locationId,

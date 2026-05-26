@@ -8,12 +8,6 @@ interface ShopifyCreds {
   token: string;
 }
 
-/**
- * Resolves Shopify credentials. Prefers OAuth-stored creds in the Settings
- * table (set by /api/shopify/callback), falls back to env vars. Returns null
- * when no credentials are available — callers should treat that as "Shopify
- * sync disabled" and degrade gracefully.
- */
 async function getCreds(): Promise<ShopifyCreds | null> {
   const settings = await prisma.settings.findUnique({ where: { key: "config" } });
   const shop = settings?.shopifyShop || process.env.SHOPIFY_SHOP;
@@ -49,10 +43,33 @@ async function shopifyFetch<T>(
   return (await res.json()) as T;
 }
 
-/**
- * Look up inventory for a SKU. Returns count=0 with no IDs when Shopify isn't
- * configured — the pricing engine will treat that as "low stock" naturally.
- */
+async function shopifyGraphQL<T>(
+  creds: ShopifyCreds,
+  query: string,
+  variables: Record<string, unknown> = {},
+): Promise<T> {
+  const url = `https://${creds.shop}/admin/api/${API_VERSION}/graphql.json`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "X-Shopify-Access-Token": creds.token,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Shopify GraphQL ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as { data?: T; errors?: unknown };
+  if (json.errors) {
+    throw new Error(`Shopify GraphQL errors: ${JSON.stringify(json.errors).slice(0, 200)}`);
+  }
+  return json.data as T;
+}
+
 export async function getInventoryBySku(sku: string): Promise<InventoryLookup> {
   const creds = await getCreds();
   if (!creds) {
@@ -84,29 +101,213 @@ export async function getInventoryBySku(sku: string): Promise<InventoryLookup> {
   }
 }
 
+interface ResolvedVariant {
+  variantId: string;
+  inventoryItemId: string;
+  productId: string;
+  matchedBy: "sku" | "name" | "created";
+}
+
+// SKU lookup via REST. Returns null if no variant exists.
+async function findVariantBySku(
+  creds: ShopifyCreds,
+  sku: string,
+): Promise<ResolvedVariant | null> {
+  const data = await shopifyFetch<{
+    variants: Array<{ id: number; product_id: number; inventory_item_id: number }>;
+  }>(creds, `variants.json?sku=${encodeURIComponent(sku)}`);
+  const v = data.variants?.[0];
+  if (!v) return null;
+  return {
+    variantId: String(v.id),
+    productId: String(v.product_id),
+    inventoryItemId: String(v.inventory_item_id),
+    matchedBy: "sku",
+  };
+}
+
+function normaliseTitle(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[\s　]+/g, " ")
+    .replace(/[^a-z0-9 一-鿿]/gi, "")
+    .trim();
+}
+
+// Fuzzy-ish title match via GraphQL. We pull top 5, then pick the first whose
+// normalised title equals the card's normalised name. Avoids returning random
+// near-matches.
+async function findVariantByName(
+  creds: ShopifyCreds,
+  name: string,
+): Promise<ResolvedVariant | null> {
+  const target = normaliseTitle(name);
+  if (target.length < 3) return null;
+
+  const q = `title:${JSON.stringify(name).slice(1, -1)}*`;
+  const data = await shopifyGraphQL<{
+    products: {
+      edges: Array<{
+        node: {
+          id: string;
+          title: string;
+          variants: {
+            edges: Array<{
+              node: { id: string; sku: string | null; inventoryItem: { id: string } };
+            }>;
+          };
+        };
+      }>;
+    };
+  }>(
+    creds,
+    `query findProducts($query: String!) {
+       products(first: 5, query: $query) {
+         edges {
+           node {
+             id
+             title
+             variants(first: 1) {
+               edges { node { id sku inventoryItem { id } } }
+             }
+           }
+         }
+       }
+     }`,
+    { query: q },
+  );
+
+  for (const edge of data.products.edges) {
+    if (normaliseTitle(edge.node.title) === target) {
+      const v = edge.node.variants.edges[0]?.node;
+      if (!v) continue;
+      return {
+        productId: edge.node.id.split("/").pop() as string,
+        variantId: v.id.split("/").pop() as string,
+        inventoryItemId: v.inventoryItem.id.split("/").pop() as string,
+        matchedBy: "name",
+      };
+    }
+  }
+  return null;
+}
+
+// Auto-create a draft product so staff can later set the retail price + photos.
+// The first variant carries SKU (setCode if available, else a generated one) +
+// cost (our buyback price) so margin reports work.
+async function createProductForCard(
+  creds: ShopifyCreds,
+  card: { sku: string | null; name: string; rarity?: string | null; language?: string | null; costPerItem: number },
+): Promise<ResolvedVariant> {
+  const sku =
+    card.sku && card.sku.length > 0
+      ? card.sku
+      : `CMP-${normaliseTitle(card.name).slice(0, 20).replace(/\s+/g, "-")}-${Date.now().toString(36)}`;
+
+  const tags = [
+    "cardmaster-pro",
+    "auto-created",
+    card.rarity ? `rarity:${card.rarity}` : null,
+    card.language ? `lang:${card.language}` : null,
+  ]
+    .filter(Boolean)
+    .join(",");
+
+  const created = await shopifyFetch<{
+    product: {
+      id: number;
+      variants: Array<{ id: number; inventory_item_id: number }>;
+    };
+  }>(creds, `products.json`, {
+    method: "POST",
+    body: JSON.stringify({
+      product: {
+        title: card.name,
+        status: "draft",
+        product_type: "Trading Card",
+        vendor: "CardMaster Pro",
+        tags,
+        variants: [
+          {
+            sku,
+            price: "0.00",
+            inventory_management: "shopify",
+            inventory_policy: "deny",
+            cost: card.costPerItem.toFixed(2),
+          },
+        ],
+      },
+    }),
+  });
+
+  const v = created.product.variants[0];
+  return {
+    productId: String(created.product.id),
+    variantId: String(v.id),
+    inventoryItemId: String(v.inventory_item_id),
+    matchedBy: "created",
+  };
+}
+
+// Newly-created inventory items aren't yet tracked at the chosen location.
+// Need to call /inventory_levels/connect before /adjust will succeed.
+async function ensureInventoryAtLocation(
+  creds: ShopifyCreds,
+  inventoryItemId: string,
+  locationId: string,
+): Promise<void> {
+  try {
+    await shopifyFetch(creds, `inventory_levels/connect.json`, {
+      method: "POST",
+      body: JSON.stringify({
+        location_id: Number(locationId),
+        inventory_item_id: Number(inventoryItemId),
+      }),
+    });
+  } catch (err) {
+    // 422 "already exists" is fine; rethrow others
+    if (
+      err instanceof Error &&
+      !/already/i.test(err.message) &&
+      !/422/.test(err.message)
+    ) {
+      throw err;
+    }
+  }
+}
+
 interface SyncCardInput {
-  sku: string;
-  variantId?: string | null;
-  inventoryItemId?: string | null;
+  // setCode if AI recognised one — else null and we lean on the name.
+  sku: string | null;
+  name: string;
+  rarity?: string | null;
+  language?: string | null;
   costPerItem: number;
   buyQuantity: number;
 }
 
 interface SyncResult {
-  sku: string;
+  sku: string | null;
+  name: string;
   ok: boolean;
   error?: string;
   newQuantity?: number;
   costUpdated?: boolean;
+  matchedBy?: "sku" | "name" | "created";
+  productId?: string;
+  variantId?: string;
 }
 
 /**
- * After a transaction settles, push each card back to Shopify:
- *   1. Increment inventory_levels at the chosen location by buyQuantity
- *   2. Update inventory_items.cost = costPerItem
+ * Settle-time Shopify sync. For each card:
+ *   1. Look up an existing variant by SKU (setCode).
+ *   2. Fall back to fuzzy product-title match on the card name.
+ *   3. If still nothing, auto-create a draft product + variant.
+ *   4. Connect inventory to the chosen store location if needed.
+ *   5. Increment inventory by buyQuantity.
+ *   6. Update inventory_items.cost so margin reports reflect what we paid.
  *
- * The location can be passed per-call (preferred for multi-store deployments),
- * else falls back to SHOPIFY_LOCATION_ID env var.
+ * Pass `locationId` per call (multi-store) — else falls back to env var.
  */
 export async function syncPurchaseToShopify(
   cards: SyncCardInput[],
@@ -116,6 +317,7 @@ export async function syncPurchaseToShopify(
   if (!creds) {
     return cards.map((c) => ({
       sku: c.sku,
+      name: c.name,
       ok: false,
       error: "Shopify not configured",
     }));
@@ -126,42 +328,49 @@ export async function syncPurchaseToShopify(
 
   for (const card of cards) {
     try {
-      let inventoryItemId = card.inventoryItemId;
-      let variantId = card.variantId;
+      let resolved: ResolvedVariant | null = null;
 
-      if (!inventoryItemId) {
-        const variants = await shopifyFetch<{
-          variants: Array<{ id: number; inventory_item_id: number }>;
-        }>(creds, `variants.json?sku=${encodeURIComponent(card.sku)}`);
-        const v = variants.variants?.[0];
-        if (!v) {
-          results.push({ sku: card.sku, ok: false, error: "SKU not found" });
-          continue;
-        }
-        inventoryItemId = String(v.inventory_item_id);
-        variantId = String(v.id);
+      if (card.sku) {
+        resolved = await findVariantBySku(creds, card.sku);
+      }
+      if (!resolved) {
+        resolved = await findVariantByName(creds, card.name);
+      }
+      if (!resolved) {
+        resolved = await createProductForCard(creds, {
+          sku: card.sku,
+          name: card.name,
+          rarity: card.rarity,
+          language: card.language,
+          costPerItem: card.costPerItem,
+        });
       }
 
       let newQty: number | undefined;
       if (locationId) {
+        if (resolved.matchedBy === "created") {
+          await ensureInventoryAtLocation(creds, resolved.inventoryItemId, locationId);
+        }
         const adj = await shopifyFetch<{
           inventory_level: { available: number };
         }>(creds, `inventory_levels/adjust.json`, {
           method: "POST",
           body: JSON.stringify({
             location_id: Number(locationId),
-            inventory_item_id: Number(inventoryItemId),
+            inventory_item_id: Number(resolved.inventoryItemId),
             available_adjustment: card.buyQuantity,
           }),
         });
         newQty = adj.inventory_level?.available;
       }
 
-      await shopifyFetch(creds, `inventory_items/${inventoryItemId}.json`, {
+      // Always (re)write cost even when matched to existing — staff may have
+      // bought the same card at a different price than last time.
+      await shopifyFetch(creds, `inventory_items/${resolved.inventoryItemId}.json`, {
         method: "PUT",
         body: JSON.stringify({
           inventory_item: {
-            id: Number(inventoryItemId),
+            id: Number(resolved.inventoryItemId),
             cost: card.costPerItem.toFixed(2),
           },
         }),
@@ -169,13 +378,18 @@ export async function syncPurchaseToShopify(
 
       results.push({
         sku: card.sku,
+        name: card.name,
         ok: true,
         newQuantity: newQty,
         costUpdated: true,
+        matchedBy: resolved.matchedBy,
+        productId: resolved.productId,
+        variantId: resolved.variantId,
       });
     } catch (err) {
       results.push({
         sku: card.sku,
+        name: card.name,
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
