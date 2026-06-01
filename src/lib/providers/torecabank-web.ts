@@ -87,15 +87,19 @@ export const torecabankWebProvider: MarketProvider = {
     const wantCode = query.setCode ? normSetCode(query.setCode) : null;
     const core = coreName(query.name);
 
-    // Prefer setCode matches; else name-core matches. Return up to 3 (e.g. raw
-    // + PSA grades) so staff sees the condition spread.
+    // When a setCode is known, ONLY return collector-number-exact matches.
+    // Character names (リザードン/ピカチュウ) have dozens of variants, so a
+    // name fallback would grab a DIFFERENT, often pricier card and poison the
+    // median. Better to return nothing than a wrong-variant price.
     let matchType: "setCode" | "name" = "setCode";
-    let hits = wantCode
-      ? products.filter((p) => normSetCode(p.setCode) === wantCode)
-      : [];
-    if (hits.length === 0 && core.length >= 2) {
+    let hits: TBProduct[];
+    if (wantCode) {
+      hits = products.filter((p) => normSetCode(p.setCode) === wantCode);
+    } else if (core.length >= 2) {
       matchType = "name";
       hits = products.filter((p) => p.name.toLowerCase().includes(core));
+    } else {
+      hits = [];
     }
     return hits.slice(0, 3).map((p) => ({
       sourceId: "torecabank-web",

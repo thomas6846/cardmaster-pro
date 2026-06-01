@@ -25,28 +25,25 @@ export const competitorProvider: MarketProvider = {
       const core =
         jp && jp[0].length >= 2 ? jp[0] : query.name.split(/[\s(（]/)[0] || query.name;
 
+      const wantCode = query.setCode ? normSetCode(query.setCode) : null;
+
+      // Pull a candidate set, then filter precisely. When a setCode is known we
+      // keep ONLY collector-number-exact rows (character names collide across
+      // many variants); name match is the fallback only when no setCode.
       const rows = await prisma.competitorPrice.findMany({
         where: {
           OR: [
             { matchKey: matchKey(query.name, query.setCode) },
             { cardName: { contains: core } },
-            ...(query.setCode ? [{ setCode: query.setCode }] : []),
           ],
         },
         orderBy: { capturedAt: "desc" },
-        take: 60,
+        take: 80,
       });
 
-      // Secondary in-memory filter: accept rows whose collector-number setCode
-      // matches (SV4a-349/190 == 349/190) or whose name contains the core token.
-      const wantCode = query.setCode ? normSetCode(query.setCode) : null;
-      const filtered = rows.filter((r) => {
-        if (wantCode && r.setCode && normSetCode(r.setCode) === wantCode)
-          return true;
-        if (r.cardName.includes(core)) return true;
-        return r.matchKey === matchKey(query.name, query.setCode);
-      });
-      const useRows = filtered.length > 0 ? filtered : rows;
+      const useRows = wantCode
+        ? rows.filter((r) => r.setCode && normSetCode(r.setCode) === wantCode)
+        : rows.filter((r) => r.cardName.includes(core));
 
       // Keep the freshest row per (shop + conditionNote).
       const seen = new Set<string>();

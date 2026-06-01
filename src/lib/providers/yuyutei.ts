@@ -50,13 +50,15 @@ function coreName(name: string): string {
 
 function pickBest(cards: YuyuteiCard[], q: ProviderQuery): YuyuteiCard | null {
   if (!cards.length) return null;
+  // With a setCode, ONLY accept a collector-number-exact match — never guess a
+  // same-character variant (リザードン has dozens). Without a setCode, fall
+  // back to a name-contains hit.
   if (q.setCode) {
     const target = normSetCode(q.setCode);
-    const byCode = cards.find((c) => normSetCode(c.setCode) === target);
-    if (byCode) return byCode;
+    return cards.find((c) => normSetCode(c.setCode) === target) || null;
   }
   const core = coreName(q.name).toLowerCase();
-  return cards.find((c) => c.name.toLowerCase().includes(core)) || cards[0];
+  return cards.find((c) => c.name.toLowerCase().includes(core)) || null;
 }
 
 export const yuyuteiProvider: MarketProvider = {
