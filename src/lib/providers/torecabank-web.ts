@@ -1,5 +1,5 @@
 import type { MarketProvider, ProviderQuery, ProviderQuote } from "./types";
-import { jpyToHkd } from "./types";
+import { jpyToHkd, normSetCode } from "./types";
 
 /**
  * トレカバンク (torecabank) — direct buyback-list website scrape.
@@ -30,10 +30,6 @@ interface TBProduct {
 }
 
 let cache: { at: number; products: TBProduct[] } | null = null;
-
-function normCode(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
 
 function coreName(name: string): string {
   // strip a leading "(PSA10)" / condition prefix, then take Japanese run
@@ -88,14 +84,14 @@ export const torecabankWebProvider: MarketProvider = {
     const products = await loadCatalogue();
     if (!products.length) return [];
 
-    const wantCode = query.setCode ? normCode(query.setCode) : null;
+    const wantCode = query.setCode ? normSetCode(query.setCode) : null;
     const core = coreName(query.name);
 
     // Prefer setCode matches; else name-core matches. Return up to 3 (e.g. raw
     // + PSA grades) so staff sees the condition spread.
     let matchType: "setCode" | "name" = "setCode";
     let hits = wantCode
-      ? products.filter((p) => normCode(p.setCode) === wantCode)
+      ? products.filter((p) => normSetCode(p.setCode) === wantCode)
       : [];
     if (hits.length === 0 && core.length >= 2) {
       matchType = "name";

@@ -1,5 +1,5 @@
 import type { MarketProvider, ProviderQuery, ProviderQuote } from "./types";
-import { jpyToHkd } from "./types";
+import { jpyToHkd, normSetCode } from "./types";
 
 /**
  * yuyu-tei (遊々亭) — major JP Pokémon retailer. Openly scrapeable, no key.
@@ -39,10 +39,6 @@ function parse(html: string): YuyuteiCard[] {
   return cards;
 }
 
-function normCode(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
 // Pull the leading Japanese (kana/kanji) run from an AI name like
 // "ピカチュウ (Pikachu) - Munch's Scream Promo" -> "ピカチュウ". Falls back to
 // the first whitespace token. Used as the yuyu-tei search term.
@@ -55,8 +51,8 @@ function coreName(name: string): string {
 function pickBest(cards: YuyuteiCard[], q: ProviderQuery): YuyuteiCard | null {
   if (!cards.length) return null;
   if (q.setCode) {
-    const target = normCode(q.setCode);
-    const byCode = cards.find((c) => normCode(c.setCode) === target);
+    const target = normSetCode(q.setCode);
+    const byCode = cards.find((c) => normSetCode(c.setCode) === target);
     if (byCode) return byCode;
   }
   const core = coreName(q.name).toLowerCase();
@@ -93,9 +89,7 @@ export const yuyuteiProvider: MarketProvider = {
       const best = pickBest(cards, query);
       if (!best) return [];
       const isSetCodeMatch = Boolean(
-        query.setCode &&
-          best.setCode.toLowerCase().replace(/[^a-z0-9]/g, "") ===
-            query.setCode.toLowerCase().replace(/[^a-z0-9]/g, ""),
+        query.setCode && normSetCode(best.setCode) === normSetCode(query.setCode),
       );
       return [
         {

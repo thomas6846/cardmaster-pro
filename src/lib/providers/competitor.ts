@@ -1,5 +1,5 @@
 import type { MarketProvider, ProviderQuery, ProviderQuote } from "./types";
-import { jpyToHkd } from "./types";
+import { jpyToHkd, normSetCode } from "./types";
 import { prisma } from "../prisma";
 import { matchKey } from "../buybacktable";
 
@@ -37,16 +37,13 @@ export const competitorProvider: MarketProvider = {
         take: 60,
       });
 
-      // Secondary in-memory filter: also accept rows whose setCode matches once
-      // both sides are stripped of slashes/spaces (e.g. "288/SM-P" == "SM-P288").
-      const wantCode = query.setCode
-        ? query.setCode.toLowerCase().replace(/[^a-z0-9]/g, "")
-        : null;
+      // Secondary in-memory filter: accept rows whose collector-number setCode
+      // matches (SV4a-349/190 == 349/190) or whose name contains the core token.
+      const wantCode = query.setCode ? normSetCode(query.setCode) : null;
       const filtered = rows.filter((r) => {
+        if (wantCode && r.setCode && normSetCode(r.setCode) === wantCode)
+          return true;
         if (r.cardName.includes(core)) return true;
-        if (wantCode && r.setCode) {
-          return r.setCode.toLowerCase().replace(/[^a-z0-9]/g, "") === wantCode;
-        }
         return r.matchKey === matchKey(query.name, query.setCode);
       });
       const useRows = filtered.length > 0 ? filtered : rows;
@@ -62,9 +59,7 @@ export const competitorProvider: MarketProvider = {
           (Date.now() - r.capturedAt.getTime()) / 86_400_000,
         );
         const isSetCodeMatch = Boolean(
-          wantCode &&
-            r.setCode &&
-            r.setCode.toLowerCase().replace(/[^a-z0-9]/g, "") === wantCode,
+          wantCode && r.setCode && normSetCode(r.setCode) === wantCode,
         );
         quotes.push({
           sourceId: "competitor",

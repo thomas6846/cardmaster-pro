@@ -50,6 +50,20 @@ export interface MarketProvider {
   fetch(query: ProviderQuery): Promise<ProviderQuote[]>;
 }
 
+/**
+ * Normalise a setCode to a comparable join key. Japanese shops use the bare
+ * collector number ("349/190", "116/080") while the AI / Pokémon TCG API adds
+ * a set prefix ("SV4a-349/190", "M5-114/081"). We key on the "NNN/NNN"
+ * collector-number portion when present, else fall back to a full strip — so
+ * "SV4a-349/190" and "349/190" both become "349190" and match.
+ */
+export function normSetCode(s: string | null | undefined): string {
+  if (!s) return "";
+  const m = s.match(/(\d+)\s*\/\s*(\d+)/);
+  if (m) return m[1] + m[2];
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 export const JPY_TO_HKD = Number(process.env.JPY_TO_HKD || 0.0505);
 export const USD_TO_HKD = Number(process.env.USD_TO_HKD || 7.8);
 
