@@ -246,9 +246,27 @@ model CompetitorPrice {
   matchKey    String                 // normalised "name|setCode" for fast lookup
   sourceNote  String?                // freeform — where the image came from
   ingestId    String                 // groups all rows from one upload
+  source      String   @default("manual") // "manual" | "twitter"
+  tweetUrl    String?  @db.Text       // link back to the source tweet
   capturedAt  DateTime @default(now())
 
   @@index([matchKey])
   @@index([shop])
   @@index([ingestId])
+}
+
+// ============================================================================
+// MonitoredShop — an X (Twitter) account whose buyback-table tweets we
+// auto-ingest. `lastTweetId` is the since_id high-water mark so each cron
+// run only processes NEW tweets (cost control — no re-OCR).
+// ============================================================================
+model MonitoredShop {
+  id          String   @id @default(cuid())
+  handle      String   @unique        // X username without @
+  shopName    String                  // display name for the breakdown
+  enabled     Boolean  @default(true)
+  lastTweetId String?                 // since_id watermark
+  lastRunAt   DateTime?
+  lastRunNote String?  @db.Text       // summary of last ingest
+  createdAt   DateTime @default(now())
 }
