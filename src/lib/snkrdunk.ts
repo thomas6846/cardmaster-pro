@@ -27,7 +27,7 @@ export async function lookupMarketPrice(query: {
     where: { queryKey },
   });
   if (cached && Date.now() - cached.scrapedAt.getTime() < CACHE_TTL_MS) {
-    return cachedToLookup(cached, "SNKRDUNK (cached)");
+    return cachedToLookup(cached, "yuyu-tei (cached)");
   }
 
   try {
@@ -54,7 +54,7 @@ export async function lookupMarketPrice(query: {
       return {
         marketPrice: hkd,
         currency: "HKD",
-        source: "SNKRDUNK",
+        source: "yuyu-tei",
         rawPrice: scraped.jpy,
         rawCurrency: "JPY",
         sampleSize: scraped.sampleSize,
@@ -66,7 +66,7 @@ export async function lookupMarketPrice(query: {
   }
 
   if (cached) {
-    return cachedToLookup(cached, "SNKRDUNK (stale)");
+    return cachedToLookup(cached, "yuyu-tei (stale)");
   }
   return mockLookup(query);
 }
