@@ -1,0 +1,24 @@
+name: Ingest shop buyback tweets
+
+# Auto-runs the Twitter -> Claude Vision OCR -> CompetitorPrice pipeline.
+# Schedule: twice a day (00:00 and 12:00 UTC = 08:00 / 20:00 HKT).
+# Cost control: maxImages=2 per shop per run. Adjust the cron / params below.
+#
+# SETUP (one-time): add a repo secret named CRON_SECRET matching the value
+# set in Railway. Settings -> Secrets and variables -> Actions -> New secret.
+
+on:
+  schedule:
+    - cron: "0 0,12 * * *"
+  workflow_dispatch: {} # allows manual "Run workflow" button
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ingest endpoint
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://cardmaster-pro-production.up.railway.app/api/cron/ingest-twitter?maxTweets=3&maxImages=2" \
+            --max-time 290 | head -c 2000

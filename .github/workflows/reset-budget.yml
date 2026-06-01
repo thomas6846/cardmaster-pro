@@ -1,0 +1,22 @@
+name: Daily budget reset
+
+# Resets Settings.budgetUsed to 0 each morning so staff start fresh.
+# Schedule: 16:01 UTC = 00:01 HKT (just after midnight Hong Kong time).
+#
+# SETUP: same CRON_SECRET repo secret as the ingest workflow.
+
+on:
+  schedule:
+    - cron: "1 16 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger budget reset
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://cardmaster-pro-production.up.railway.app/api/cron/reset-budget" \
+            --max-time 60 | head -c 500
