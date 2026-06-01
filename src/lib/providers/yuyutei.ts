@@ -39,16 +39,28 @@ function parse(html: string): YuyuteiCard[] {
   return cards;
 }
 
+function normCode(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// Pull the leading Japanese (kana/kanji) run from an AI name like
+// "ピカチュウ (Pikachu) - Munch's Scream Promo" -> "ピカチュウ". Falls back to
+// the first whitespace token. Used as the yuyu-tei search term.
+function coreName(name: string): string {
+  const jp = name.match(/^[぀-ヿ一-鿿ｦ-ﾟ]+/);
+  if (jp && jp[0].length >= 2) return jp[0];
+  return name.split(/[\s(（]/)[0] || name;
+}
+
 function pickBest(cards: YuyuteiCard[], q: ProviderQuery): YuyuteiCard | null {
   if (!cards.length) return null;
   if (q.setCode) {
-    const byCode = cards.find(
-      (c) => c.setCode.toLowerCase() === q.setCode!.toLowerCase(),
-    );
+    const target = normCode(q.setCode);
+    const byCode = cards.find((c) => normCode(c.setCode) === target);
     if (byCode) return byCode;
   }
-  const name = q.name.toLowerCase();
-  return cards.find((c) => c.name.toLowerCase().includes(name)) || cards[0];
+  const core = coreName(q.name).toLowerCase();
+  return cards.find((c) => c.name.toLowerCase().includes(core)) || cards[0];
 }
 
 export const yuyuteiProvider: MarketProvider = {
@@ -56,18 +68,29 @@ export const yuyuteiProvider: MarketProvider = {
   label: "遊々亭 (yuyu-tei)",
   isEnabled: () => true, // always on — no credentials needed
   async fetch(query: ProviderQuery): Promise<ProviderQuote[]> {
-    const term = query.setCode || query.name;
-    const url =
-      "https://yuyu-tei.jp/sell/poc/s/search?search_word=" +
-      encodeURIComponent(term);
-    try {
-      const res = await fetch(url, {
-        headers: { "User-Agent": UA, "Accept-Language": "ja" },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        cache: "no-store",
-      });
+    async function search(term: string): Promise<YuyuteiCard[]> {
+      const res = await fetch(
+        "https://yuyu-tei.jp/sell/poc/s/search?search_word=" +
+          encodeURIComponent(term),
+        {
+          headers: { "User-Agent": UA, "Accept-Language": "ja" },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+          cache: "no-store",
+        },
+      );
       if (!res.ok) return [];
-      const best = pickBest(parse(await res.text()), query);
+      return parse(await res.text());
+    }
+
+    try {
+      // 1. Search by setCode (precise). 2. If nothing parsed, search by the
+      // card's core Japanese name — yuyu-tei often can't resolve raw setCodes.
+      let cards = query.setCode ? await search(query.setCode) : [];
+      const nameTerm = coreName(query.name);
+      if (cards.length === 0 && nameTerm) {
+        cards = await search(nameTerm);
+      }
+      const best = pickBest(cards, query);
       if (!best) return [];
       return [
         {
@@ -78,7 +101,9 @@ export const yuyuteiProvider: MarketProvider = {
           priceHkd: jpyToHkd(best.priceJpy),
           conditionNote: best.rarity,
           title: `${best.name} ${best.setCode}`,
-          url,
+          url:
+            "https://yuyu-tei.jp/sell/poc/s/search?search_word=" +
+            encodeURIComponent(query.setCode || nameTerm),
         },
       ];
     } catch (err) {

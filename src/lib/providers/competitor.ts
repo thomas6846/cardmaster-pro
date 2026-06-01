@@ -18,29 +18,43 @@ export const competitorProvider: MarketProvider = {
   isEnabled: () => true,
   async fetch(query: ProviderQuery): Promise<ProviderQuote[]> {
     try {
-      const key = matchKey(query.name, query.setCode);
-      const codeKey = query.setCode
-        ? matchKey(query.name, query.setCode)
-        : null;
+      // Core Japanese/first token of the AI name — competitor rows store short
+      // Japanese names, so matching the full "ピカチュウ (Pikachu) - Munch's..."
+      // never works; match the core token instead.
+      const jp = query.name.match(/^[぀-ヿ一-鿿ｦ-ﾟ]+/);
+      const core =
+        jp && jp[0].length >= 2 ? jp[0] : query.name.split(/[\s(（]/)[0] || query.name;
 
-      // Exact matchKey OR name contains query OR setCode contains.
       const rows = await prisma.competitorPrice.findMany({
         where: {
           OR: [
-            { matchKey: key },
-            ...(codeKey ? [{ matchKey: codeKey }] : []),
-            { cardName: { contains: query.name } },
+            { matchKey: matchKey(query.name, query.setCode) },
+            { cardName: { contains: core } },
             ...(query.setCode ? [{ setCode: query.setCode }] : []),
           ],
         },
         orderBy: { capturedAt: "desc" },
-        take: 40,
+        take: 60,
       });
+
+      // Secondary in-memory filter: also accept rows whose setCode matches once
+      // both sides are stripped of slashes/spaces (e.g. "288/SM-P" == "SM-P288").
+      const wantCode = query.setCode
+        ? query.setCode.toLowerCase().replace(/[^a-z0-9]/g, "")
+        : null;
+      const filtered = rows.filter((r) => {
+        if (r.cardName.includes(core)) return true;
+        if (wantCode && r.setCode) {
+          return r.setCode.toLowerCase().replace(/[^a-z0-9]/g, "") === wantCode;
+        }
+        return r.matchKey === matchKey(query.name, query.setCode);
+      });
+      const useRows = filtered.length > 0 ? filtered : rows;
 
       // Keep the freshest row per (shop + conditionNote).
       const seen = new Set<string>();
       const quotes: ProviderQuote[] = [];
-      for (const r of rows) {
+      for (const r of useRows) {
         const dedupe = `${r.shop}|${r.conditionNote || ""}`;
         if (seen.has(dedupe)) continue;
         seen.add(dedupe);
