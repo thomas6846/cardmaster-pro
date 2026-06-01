@@ -701,26 +701,37 @@ function CardRow({
   );
 }
 
-interface MarketRef {
-  pricing: {
-    marketReferenceHKD: number | null;
-    lowestReferenceHKD: number | null;
-    highestReferenceHKD: number | null;
-    suggestedBuybackPriceHKD: number | null;
-    conditionRate: number;
-    pricingMethod: string;
-  };
-  references: Array<{
-    source: string;
-    title: string;
-    priceHKD: number | null;
-    itemUrl: string | null;
-  }>;
-  warning: string;
+interface ProviderQuote {
+  sourceId: string;
+  sourceLabel: string;
+  kind: "buyback" | "sell" | "listing" | "sold";
+  priceHkd: number | null;
+  priceJpy: number | null;
+  conditionNote?: string;
+  title?: string;
+  url?: string;
+  asOf?: string;
 }
 
+interface AggregateResult {
+  quotes: ProviderQuote[];
+  sourcesQueried: string[];
+  sourcesSkipped: string[];
+  medianHkd: number | null;
+  lowestHkd: number | null;
+  highestHkd: number | null;
+  sampleSize: number;
+}
+
+const KIND_LABEL: Record<string, string> = {
+  buyback: "收購",
+  sell: "零售",
+  listing: "叫價",
+  sold: "成交",
+};
+
 function MarketReferencePanel({ card }: { card: ScannedCard }) {
-  const [data, setData] = useState<MarketRef | null>(null);
+  const [data, setData] = useState<AggregateResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -735,11 +746,10 @@ function MarketReferencePanel({ card }: { card: ScannedCard }) {
           cardName: card.name,
           cardCode: card.setCode || undefined,
           condition: card.condition,
-          cardImageUrl: card.imageUrl,
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.message || json.error || "查詢失敗");
+      if (!res.ok) throw new Error(json.error || "查詢失敗");
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -756,7 +766,7 @@ function MarketReferencePanel({ card }: { card: ScannedCard }) {
         className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
       >
         <LineChart className="h-3 w-3" />
-        查 eBay + SNKRDUNK 市場參考
+        查多店市場行情
       </button>
     );
   }
@@ -765,80 +775,79 @@ function MarketReferencePanel({ card }: { card: ScannedCard }) {
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />
-        查緊市場價...
+        查緊多店行情...
       </div>
     );
   }
 
-  if (error) {
-    return <p className="text-xs text-destructive">⚠️ {error}</p>;
-  }
-
+  if (error) return <p className="text-xs text-destructive">⚠️ {error}</p>;
   if (!data) return null;
 
-  const refRef = data.pricing.marketReferenceHKD;
-  const suggested = data.pricing.suggestedBuybackPriceHKD;
   const ourQuote = card.finalPrice ?? card.quotedPrice;
   const gap =
-    suggested && ourQuote
-      ? Math.round(((suggested - ourQuote) / ourQuote) * 100)
+    data.medianHkd && ourQuote
+      ? Math.round(((data.medianHkd - ourQuote) / ourQuote) * 100)
       : null;
 
   return (
     <div className="rounded-md border border-blue-200 bg-blue-50/60 p-2 text-xs">
       <div className="mb-1 flex items-center justify-between font-medium text-blue-900">
-        <span>📊 市場參考 (eBay + SNKRDUNK)</span>
+        <span>📊 多店市場行情 ({data.sampleSize})</span>
         {gap !== null && (
           <span
             className={
               Math.abs(gap) < 15
                 ? "text-emerald-700"
-                : gap > 0
-                  ? "text-amber-700"
-                  : "text-red-700"
+                : "text-amber-700"
             }
           >
-            {gap > 0 ? "+" : ""}
-            {gap}% vs 系統建議
+            中位 {formatCurrency(data.medianHkd!)} ({gap > 0 ? "+" : ""}
+            {gap}% vs 系統)
           </span>
         )}
       </div>
-      {refRef !== null ? (
-        <div className="space-y-0.5 text-blue-800/80">
-          <div>
-            市價中位 (lowest-5): <strong>{formatCurrency(refRef)}</strong> ·
-            建議買取: <strong>{formatCurrency(suggested || 0)}</strong>
+
+      {data.sampleSize > 0 ? (
+        <>
+          <div className="mb-1 text-blue-800/70">
+            範圍 {formatCurrency(data.lowestHkd!)}–{formatCurrency(data.highestHkd!)}
           </div>
-          {data.references.length > 0 && (
-            <details>
-              <summary className="cursor-pointer">
-                Top {data.references.length} listings
-              </summary>
-              <div className="mt-1 space-y-0.5">
-                {data.references.slice(0, 5).map((r, i) => (
-                  <div key={i} className="flex justify-between gap-2">
-                    <span className="truncate">
-                      [{r.source}] {r.title.slice(0, 50)}
-                    </span>
-                    {r.priceHKD && (
-                      <a
-                        href={r.itemUrl || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 font-semibold underline-offset-2 hover:underline"
-                      >
-                        {formatCurrency(r.priceHKD)}
-                      </a>
-                    )}
-                  </div>
-                ))}
+          <div className="space-y-0.5">
+            {data.quotes.slice(0, 12).map((q, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-2 border-b border-blue-100 py-0.5 last:border-0"
+              >
+                <span className="flex items-center gap-1 truncate">
+                  <span className="rounded bg-blue-100 px-1 text-[10px] text-blue-700">
+                    {KIND_LABEL[q.kind] || q.kind}
+                  </span>
+                  <span className="font-medium text-blue-900">{q.sourceLabel}</span>
+                  {q.asOf && (
+                    <span className="text-[10px] text-amber-600">※{q.asOf}</span>
+                  )}
+                </span>
+                {q.priceHkd && (
+                  <a
+                    href={q.url || "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 font-bold text-red-600 underline-offset-2 hover:underline"
+                  >
+                    {formatCurrency(q.priceHkd)}
+                  </a>
+                )}
               </div>
-            </details>
-          )}
-        </div>
+            ))}
+          </div>
+        </>
       ) : (
-        <p className="text-muted-foreground">
-          ⚠️ 冇 listing 數據（EBAY_BEARER_TOKEN 或 SNKRDUNK_PROVIDER_URL 未設）
+        <p className="text-muted-foreground">冇行情數據</p>
+      )}
+
+      {data.sourcesSkipped.length > 0 && (
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          未連線: {data.sourcesSkipped.join(", ")}（設定 token 即啟用）
         </p>
       )}
     </div>

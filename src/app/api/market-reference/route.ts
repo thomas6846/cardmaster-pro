@@ -1,31 +1,25 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
-import { getMarketReferenceForBuyback } from "@/lib/marketreference";
+import { aggregateMarket } from "@/lib/providers";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 const Body = z.object({
-  cardName: z.string().optional(),
+  cardName: z.string().min(1),
   cardCode: z.string().optional(),
-  setName: z.string().optional(),
   language: z.string().optional(),
-  condition: z.string().min(1),
-  cardImageUrl: z.string().optional(),
-  extraKeywords: z.string().optional(),
-  limit: z.number().int().min(1).max(50).optional(),
-  returnLimit: z.number().int().min(1).max(50).optional(),
+  condition: z.string().optional(),
 });
 
 /**
  * POST /api/market-reference
  *
- * Look up market reference prices from eBay + SNKRDUNK proxy in parallel.
- * Returns asking-price-based reference (median of lowest 5) for sanity-
- * checking the internal pricing engine output. Does NOT replace our quote.
- *
- * Used by the staff scanner UI when staff hits "睇市場參考" on a card.
+ * 買取チェッカー-style multi-source aggregation. Returns each enabled source's
+ * price quote(s) plus a combined median / range. Sources that aren't
+ * configured (no token) are listed as skipped so the UI can show what would
+ * light up once credentials are added.
  */
 export async function POST(req: Request) {
   const session = await auth();
@@ -42,16 +36,12 @@ export async function POST(req: Request) {
     );
   }
 
-  try {
-    const result = await getMarketReferenceForBuyback(parsed.data);
-    return NextResponse.json(result);
-  } catch (err) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: err instanceof Error ? err.message : String(err),
-      },
-      { status: 400 },
-    );
-  }
+  const result = await aggregateMarket({
+    name: parsed.data.cardName,
+    setCode: parsed.data.cardCode,
+    language: parsed.data.language,
+    condition: parsed.data.condition,
+  });
+
+  return NextResponse.json(result);
 }
