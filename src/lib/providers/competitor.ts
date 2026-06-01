@@ -61,10 +61,16 @@ export const competitorProvider: MarketProvider = {
         const ageDays = Math.floor(
           (Date.now() - r.capturedAt.getTime()) / 86_400_000,
         );
+        const isSetCodeMatch = Boolean(
+          wantCode &&
+            r.setCode &&
+            r.setCode.toLowerCase().replace(/[^a-z0-9]/g, "") === wantCode,
+        );
         quotes.push({
           sourceId: "competitor",
           sourceLabel: r.shop,
           kind: "buyback",
+          matchType: isSetCodeMatch ? "setCode" : "name",
           priceJpy: r.priceJpy,
           priceHkd: jpyToHkd(r.priceJpy),
           conditionNote: r.conditionNote || undefined,

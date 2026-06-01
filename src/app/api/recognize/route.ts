@@ -5,6 +5,8 @@ import { recognizeCard, recognizeCardsBulk } from "@/lib/anthropic";
 import { lookupMarketPrice } from "@/lib/snkrdunk";
 import { getInventoryBySku } from "@/lib/shopify";
 import { quoteCard } from "@/lib/pricing";
+import { aggregateMarket, deriveMarketBasis } from "@/lib/providers";
+import { getSettings } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { verifyCard } from "@/lib/cardverify";
@@ -98,15 +100,36 @@ async function processOne(
   const canonicalRarity = verified?.rarity || recog.rarity;
 
   const sku = cleanSku(canonicalSetCode);
-  const [market, inventory] = await Promise.all([
-    lookupMarketPrice({ name: canonicalName, setCode: canonicalSetCode }),
+  const settings = await getSettings();
+  const [agg, inventory] = await Promise.all([
+    aggregateMarket({
+      name: canonicalName,
+      setCode: canonicalSetCode || undefined,
+      language: recog.language,
+      condition,
+    }),
     sku
       ? getInventoryBySku(sku)
       : Promise.resolve<InventoryLookup>({ count: 0 }),
   ]);
 
+  // Single market basis from the live aggregate: prefer competitor BUYBACK
+  // median, else yuyu-tei retail. This replaces the old standalone lookup so
+  // the engine price and the 多店市場行情 panel are always consistent.
+  const basis = deriveMarketBasis(agg, settings.baseMargin);
+  let marketPriceHkd = basis.marketPriceHkd;
+  let marketSource = basis.source;
+  if (marketPriceHkd === null) {
+    const fallback = await lookupMarketPrice({
+      name: canonicalName,
+      setCode: canonicalSetCode,
+    });
+    marketPriceHkd = fallback.marketPrice;
+    marketSource = fallback.source;
+  }
+
   const quote = await quoteCard({
-    marketPrice: market.marketPrice,
+    marketPrice: marketPriceHkd,
     condition,
     inventoryCount: inventory.count,
   });
@@ -128,10 +151,10 @@ async function processOne(
       conditionDetails: recog.condition
         ? (JSON.parse(JSON.stringify(recog.condition)) as object)
         : undefined,
-      marketPrice: market.marketPrice,
-      marketCurrency: market.currency,
-      marketSource: market.source,
-      marketReference: verified?.referenceUrl || market.reference,
+      marketPrice: marketPriceHkd,
+      marketCurrency: "HKD",
+      marketSource,
+      marketReference: verified?.referenceUrl,
       inventoryCount: inventory.count,
       shopifySku: inventory.sku || sku,
       shopifyVariantId: inventory.variantId,
@@ -176,8 +199,8 @@ async function processOne(
     entityType: "Card",
     entityId: card.id,
     actor: staffName || "staff",
-    payload: { recog, verified, market, inventory, quote, historyCount: history.length },
+    payload: { recog, verified, basis, inventory, quote, historyCount: history.length },
   });
 
-  return { card, recognition: recog, verified, market, inventory, quote, history };
+  return { card, recognition: recog, verified, basis, inventory, quote, history };
 }

@@ -92,11 +92,17 @@ export const yuyuteiProvider: MarketProvider = {
       }
       const best = pickBest(cards, query);
       if (!best) return [];
+      const isSetCodeMatch = Boolean(
+        query.setCode &&
+          best.setCode.toLowerCase().replace(/[^a-z0-9]/g, "") ===
+            query.setCode.toLowerCase().replace(/[^a-z0-9]/g, ""),
+      );
       return [
         {
           sourceId: "yuyu-tei",
           sourceLabel: "遊々亭",
           kind: "sell",
+          matchType: isSetCodeMatch ? "setCode" : "name",
           priceJpy: best.priceJpy,
           priceHkd: jpyToHkd(best.priceJpy),
           conditionNote: best.rarity,

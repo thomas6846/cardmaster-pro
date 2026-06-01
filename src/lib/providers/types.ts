@@ -20,6 +20,10 @@ export interface ProviderQuote {
   kind: PriceKind;
   priceJpy: number | null;
   priceHkd: number | null;
+  // How the quote matched the query: "setCode" = exact collector-number hit
+  // (high confidence, same card); "name" = looser name-contains (may be a
+  // different variant). The aggregator prefers setCode matches when present.
+  matchType?: "setCode" | "name";
   // e.g. "シュリンク無し", "未開封BOX", "PSA 10", or our S/A/B/C/D.
   conditionNote?: string;
   title?: string;

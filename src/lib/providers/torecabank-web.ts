@@ -93,16 +93,19 @@ export const torecabankWebProvider: MarketProvider = {
 
     // Prefer setCode matches; else name-core matches. Return up to 3 (e.g. raw
     // + PSA grades) so staff sees the condition spread.
+    let matchType: "setCode" | "name" = "setCode";
     let hits = wantCode
       ? products.filter((p) => normCode(p.setCode) === wantCode)
       : [];
     if (hits.length === 0 && core.length >= 2) {
+      matchType = "name";
       hits = products.filter((p) => p.name.toLowerCase().includes(core));
     }
     return hits.slice(0, 3).map((p) => ({
       sourceId: "torecabank-web",
       sourceLabel: "トレカバンク",
       kind: "buyback" as const,
+      matchType,
       priceJpy: p.buyPrice,
       priceHkd: jpyToHkd(p.buyPrice),
       conditionNote: p.condition || p.rarity,
