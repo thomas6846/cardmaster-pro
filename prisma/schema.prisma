@@ -229,3 +229,26 @@ model SnkrdunkPriceCache {
 
   @@index([scrapedAt])
 }
+
+// ============================================================================
+// CompetitorPrice — buyback prices extracted (via Claude Vision OCR) from a
+// rival shop's price-list image (the kind Japanese shops post on Twitter).
+// Powers the "competitor" provider in the market aggregator. One row per
+// (card line) per ingested image.
+// ============================================================================
+model CompetitorPrice {
+  id          String   @id @default(cuid())
+  shop        String                 // e.g. "トレカバンク", "BIG トレカ"
+  cardName    String
+  setCode     String?
+  priceJpy    Float
+  conditionNote String?              // e.g. "シュリンク無し", "未開封BOX", "PSA10"
+  matchKey    String                 // normalised "name|setCode" for fast lookup
+  sourceNote  String?                // freeform — where the image came from
+  ingestId    String                 // groups all rows from one upload
+  capturedAt  DateTime @default(now())
+
+  @@index([matchKey])
+  @@index([shop])
+  @@index([ingestId])
+}

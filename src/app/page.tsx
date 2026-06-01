@@ -7,6 +7,7 @@ import {
   Sparkles,
   Users,
   FileSearch,
+  LineChart,
 } from "lucide-react";
 import {
   Card,
@@ -71,6 +72,7 @@ export default async function Home() {
     : 0;
   const role = session?.user?.role || "STAFF";
   const isAdmin = role === "ADMIN";
+  const isStaff = role === "STAFF";
 
   return (
     <div className="container py-10">
@@ -189,6 +191,15 @@ export default async function Home() {
             title="稽核日誌"
             description="所有 AI 識別、審批、結算、Shopify 同步操作記錄"
             cta="查看日誌"
+          />
+        )}
+        {!isStaff && (
+          <ActionCard
+            href="/admin/buyback-table"
+            icon={<LineChart className="h-6 w-6" />}
+            title="同行買取表 OCR"
+            description="上傳卡店買取表圖，AI 抽價入多店市場行情"
+            cta="上傳買取表"
           />
         )}
         {!isAdmin && (

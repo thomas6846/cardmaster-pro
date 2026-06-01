@@ -2,6 +2,7 @@ import type { MarketProvider, ProviderQuery, ProviderQuote } from "./types";
 import { yuyuteiProvider } from "./yuyutei";
 import { ebayProvider } from "./ebay";
 import { snkrdunkProxyProvider } from "./snkrdunk-proxy";
+import { competitorProvider } from "./competitor";
 
 /**
  * Market aggregator — the 買取チェッカー-style engine.
@@ -14,9 +15,10 @@ import { snkrdunkProxyProvider } from "./snkrdunk-proxy";
  */
 
 const PROVIDERS: MarketProvider[] = [
-  yuyuteiProvider,
-  snkrdunkProxyProvider,
-  ebayProvider,
+  competitorProvider, // 同行收購表 (Claude Vision OCR of rival 買取表 images)
+  yuyuteiProvider, // 遊々亭 retail
+  snkrdunkProxyProvider, // your own SNKRDUNK/buyback proxy
+  ebayProvider, // eBay listings (EN cards)
 ];
 
 function median(values: number[]): number | null {
