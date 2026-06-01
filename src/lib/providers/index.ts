@@ -3,6 +3,7 @@ import { yuyuteiProvider } from "./yuyutei";
 import { ebayProvider } from "./ebay";
 import { snkrdunkProxyProvider } from "./snkrdunk-proxy";
 import { competitorProvider } from "./competitor";
+import { torecabankWebProvider } from "./torecabank-web";
 
 /**
  * Market aggregator — the 買取チェッカー-style engine.
@@ -15,6 +16,7 @@ import { competitorProvider } from "./competitor";
  */
 
 const PROVIDERS: MarketProvider[] = [
+  torecabankWebProvider, // トレカバンク buyback catalogue (direct web scrape)
   competitorProvider, // 同行收購表 (Claude Vision OCR of rival 買取表 images)
   yuyuteiProvider, // 遊々亭 retail
   snkrdunkProxyProvider, // your own SNKRDUNK/buyback proxy
