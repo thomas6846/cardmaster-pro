@@ -1,15 +1,18 @@
 name: Ingest shop buyback tweets
 
 # Auto-runs the Twitter -> Claude Vision OCR -> CompetitorPrice pipeline.
-# Schedule: twice a day (00:00 and 12:00 UTC = 08:00 / 20:00 HKT).
-# Cost control: maxImages=2 per shop per run. Adjust the cron / params below.
+# Schedule: hourly. since_id means each run only fetches NEW tweets, so most
+# hours find nothing and cost almost nothing (X reads only, no OCR). OCR fires
+# only when a shop posts a fresh price-list image — so new posts are picked up
+# within ~1 hour without re-processing old ones.
+# (GitHub throttles scheduled runs to roughly :00 each hour, sometimes later.)
 #
 # SETUP (one-time): add a repo secret named CRON_SECRET matching the value
 # set in Railway. Settings -> Secrets and variables -> Actions -> New secret.
 
 on:
   schedule:
-    - cron: "0 0,12 * * *"
+    - cron: "5 * * * *"
   workflow_dispatch: {} # allows manual "Run workflow" button
 
 jobs:

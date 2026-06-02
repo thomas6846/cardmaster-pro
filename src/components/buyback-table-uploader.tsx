@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Upload, Loader2, Store, CheckCircle2 } from "lucide-react";
+import { Upload, Loader2, Store, CheckCircle2, Download } from "lucide-react";
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -152,7 +153,20 @@ export function BuybackTableUploader({ recent }: { recent: RecentShop[] }) {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">已收錄店舖</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base">已收錄店舖</CardTitle>
+            {recent.length > 0 && (
+              <Link href="/api/buyback-table/export" target="_blank">
+                <Button size="sm" variant="outline">
+                  <Download className="h-3 w-3" />
+                  下載全部 CSV
+                </Button>
+              </Link>
+            )}
+          </div>
+          <CardDescription>
+            CSV 可喺 Excel 開，核對 AI 抽到嘅卡名 / setCode / 價 / 原圖連結
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {recent.length === 0 ? (
@@ -168,8 +182,15 @@ export function BuybackTableUploader({ recent }: { recent: RecentShop[] }) {
                     <Store className="h-4 w-4 text-muted-foreground" />
                     {s.shop}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
                     {s.count} 張卡 · {s.lastAt ? formatDate(s.lastAt) : "—"}
+                    <Link
+                      href={`/api/buyback-table/export?shop=${encodeURIComponent(s.shop)}`}
+                      target="_blank"
+                      className="text-primary hover:underline"
+                    >
+                      CSV
+                    </Link>
                   </span>
                 </div>
               ))}
