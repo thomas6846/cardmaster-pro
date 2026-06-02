@@ -1,5 +1,5 @@
 import type { MarketProvider, ProviderQuery, ProviderQuote } from "./types";
-import { jpyToHkd, normSetCode } from "./types";
+import { jpyToHkd, normSetCode, coreCardName } from "./types";
 
 /**
  * yuyu-tei (遊々亭) — major JP Pokémon retailer. Openly scrapeable, no key.
@@ -39,15 +39,6 @@ function parse(html: string): YuyuteiCard[] {
   return cards;
 }
 
-// Pull the leading Japanese (kana/kanji) run from an AI name like
-// "ピカチュウ (Pikachu) - Munch's Scream Promo" -> "ピカチュウ". Falls back to
-// the first whitespace token. Used as the yuyu-tei search term.
-function coreName(name: string): string {
-  const jp = name.match(/^[぀-ヿ一-鿿ｦ-ﾟ]+/);
-  if (jp && jp[0].length >= 2) return jp[0];
-  return name.split(/[\s(（]/)[0] || name;
-}
-
 function pickBest(cards: YuyuteiCard[], q: ProviderQuery): YuyuteiCard | null {
   if (!cards.length) return null;
   // With a setCode, ONLY accept a collector-number-exact match — never guess a
@@ -57,7 +48,7 @@ function pickBest(cards: YuyuteiCard[], q: ProviderQuery): YuyuteiCard | null {
     const target = normSetCode(q.setCode);
     return cards.find((c) => normSetCode(c.setCode) === target) || null;
   }
-  const core = coreName(q.name).toLowerCase();
+  const core = coreCardName(q.name).toLowerCase();
   return cards.find((c) => c.name.toLowerCase().includes(core)) || null;
 }
 
@@ -84,7 +75,7 @@ export const yuyuteiProvider: MarketProvider = {
       // 1. Search by setCode (precise). 2. If nothing parsed, search by the
       // card's core Japanese name — yuyu-tei often can't resolve raw setCodes.
       let cards = query.setCode ? await search(query.setCode) : [];
-      const nameTerm = coreName(query.name);
+      const nameTerm = coreCardName(query.name);
       if (cards.length === 0 && nameTerm) {
         cards = await search(nameTerm);
       }

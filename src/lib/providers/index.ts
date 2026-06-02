@@ -54,35 +54,42 @@ export async function aggregateMarket(
     enabled.map((p) => p.fetch(query)),
   );
 
-  let quotes: ProviderQuote[] = [];
+  const quotes: ProviderQuote[] = [];
   for (const r of settled) {
     if (r.status === "fulfilled") quotes.push(...r.value);
   }
 
-  // Precision filter: if a setCode was queried AND we got any setCode-exact
-  // matches, drop the looser name-matches — they're often a DIFFERENT variant
-  // of the same character and blow out the range (e.g. リザードン vs the exact
-  // リザードンex SAR). Keeps the panel + median honest.
-  if (query.setCode) {
-    const exact = quotes.filter((q) => q.matchType === "setCode");
-    if (exact.length > 0) quotes = exact;
-  }
+  // Sort setCode-exact matches first (high confidence = the exact card), then
+  // by price. Name matches (same-name rough references — common for Twitter
+  // rows with no collector number) follow, visually distinct via matchType.
+  quotes.sort((a, b) => {
+    const am = a.matchType === "setCode" ? 0 : 1;
+    const bm = b.matchType === "setCode" ? 0 : 1;
+    if (am !== bm) return am - bm;
+    return (a.priceHkd ?? Infinity) - (b.priceHkd ?? Infinity);
+  });
 
-  const prices = quotes
+  // Median/range come from the setCode-exact subset when it exists (precise),
+  // else from all matches (rough same-name reference). Stops a couple of
+  // exact hits being diluted by noisy name matches, while still showing a
+  // number when only name matches are available.
+  const exactPrices = quotes
+    .filter((q) => q.matchType === "setCode" && Number(q.priceHkd) > 0)
+    .map((q) => q.priceHkd as number);
+  const allPrices = quotes
     .map((q) => q.priceHkd)
     .filter((p): p is number => Number(p) > 0);
-
-  quotes.sort((a, b) => (a.priceHkd ?? Infinity) - (b.priceHkd ?? Infinity));
+  const basis = exactPrices.length > 0 ? exactPrices : allPrices;
 
   return {
     query,
     quotes,
     sourcesQueried: enabled.map((p) => p.label),
     sourcesSkipped: skipped,
-    medianHkd: median(prices),
-    lowestHkd: prices.length ? Math.min(...prices) : null,
-    highestHkd: prices.length ? Math.max(...prices) : null,
-    sampleSize: prices.length,
+    medianHkd: median(basis),
+    lowestHkd: basis.length ? Math.min(...basis) : null,
+    highestHkd: basis.length ? Math.max(...basis) : null,
+    sampleSize: allPrices.length,
   };
 }
 
@@ -110,24 +117,49 @@ export function deriveMarketBasis(
   result: AggregateResult,
   baseMargin: number,
 ): MarketBasis {
-  const buybacks = result.quotes
-    .filter((q) => q.kind === "buyback" && Number(q.priceHkd) > 0)
-    .map((q) => q.priceHkd as number);
-  if (buybacks.length > 0) {
-    const m = median(buybacks)!;
+  const q = result.quotes;
+  const pick = (kind: string, exactOnly: boolean) =>
+    q
+      .filter(
+        (x) =>
+          x.kind === kind &&
+          Number(x.priceHkd) > 0 &&
+          (!exactOnly || x.matchType === "setCode"),
+      )
+      .map((x) => x.priceHkd as number);
+
+  // Priority: exact buyback > exact retail > name buyback > name retail.
+  // Buyback bases skip ×baseMargin (it's already a buyback figure) by
+  // up-converting; retail bases stay raw so the engine applies the margin.
+  const exactBuy = pick("buyback", true);
+  if (exactBuy.length) {
+    const m = median(exactBuy)!;
     return {
       marketPriceHkd: Math.round(m / (baseMargin || 0.65)),
       basis: "competitor-buyback",
-      source: `同行收購中位 (${buybacks.length})`,
+      source: `同行收購中位·編號 (${exactBuy.length})`,
       rawHkd: m,
     };
   }
-  const retails = result.quotes
-    .filter((q) => q.kind === "sell" && Number(q.priceHkd) > 0)
-    .map((q) => q.priceHkd as number);
-  if (retails.length > 0) {
-    const m = median(retails)!;
-    return { marketPriceHkd: m, basis: "retail", source: "遊々亭 零售", rawHkd: m };
+  const exactSell = pick("sell", true);
+  if (exactSell.length) {
+    const m = median(exactSell)!;
+    return { marketPriceHkd: m, basis: "retail", source: "遊々亭 零售·編號", rawHkd: m };
+  }
+  const nameBuy = pick("buyback", false);
+  if (nameBuy.length) {
+    const m = median(nameBuy)!;
+    return {
+      marketPriceHkd: Math.round(m / (baseMargin || 0.65)),
+      basis: "competitor-buyback",
+      source: `同行收購中位·同名 (${nameBuy.length})`,
+      rawHkd: m,
+    };
+  }
+  const nameSell = pick("sell", false);
+  if (nameSell.length) {
+    const m = median(nameSell)!;
+    return { marketPriceHkd: m, basis: "retail", source: "遊々亭 零售·同名", rawHkd: m };
   }
   return { marketPriceHkd: null, basis: "none", source: "", rawHkd: null };
 }

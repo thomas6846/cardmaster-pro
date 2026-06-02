@@ -1,5 +1,5 @@
 import type { MarketProvider, ProviderQuery, ProviderQuote } from "./types";
-import { jpyToHkd, normSetCode } from "./types";
+import { jpyToHkd, normSetCode, coreCardName } from "./types";
 
 /**
  * トレカバンク (torecabank) — direct buyback-list website scrape.
@@ -30,13 +30,6 @@ interface TBProduct {
 }
 
 let cache: { at: number; products: TBProduct[] } | null = null;
-
-function coreName(name: string): string {
-  // strip a leading "(PSA10)" / condition prefix, then take Japanese run
-  const stripped = name.replace(/^\([^)]*\)\s*/, "");
-  const jp = stripped.match(/[぀-ヿ一-鿿ｦ-ﾟ]+/);
-  return (jp ? jp[0] : stripped.split(/[\s[【(（]/)[0] || stripped).toLowerCase();
-}
 
 async function loadCatalogue(): Promise<TBProduct[]> {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.products;
@@ -85,7 +78,7 @@ export const torecabankWebProvider: MarketProvider = {
     if (!products.length) return [];
 
     const wantCode = query.setCode ? normSetCode(query.setCode) : null;
-    const core = coreName(query.name);
+    const core = coreCardName(query.name).toLowerCase();
 
     // When a setCode is known, ONLY return collector-number-exact matches.
     // Character names (リザードン/ピカチュウ) have dozens of variants, so a

@@ -705,6 +705,7 @@ interface ProviderQuote {
   sourceId: string;
   sourceLabel: string;
   kind: "buyback" | "sell" | "listing" | "sold";
+  matchType?: "setCode" | "name";
   priceHkd: number | null;
   priceJpy: number | null;
   conditionNote?: string;
@@ -821,6 +822,16 @@ function MarketReferencePanel({ card }: { card: ScannedCard }) {
                 <span className="flex items-center gap-1 truncate">
                   <span className="rounded bg-blue-100 px-1 text-[10px] text-blue-700">
                     {KIND_LABEL[q.kind] || q.kind}
+                  </span>
+                  <span
+                    className={`rounded px-1 text-[10px] ${
+                      q.matchType === "setCode"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-amber-100 text-amber-700"
+                    }`}
+                    title={q.matchType === "setCode" ? "編號精準對中" : "同名參考（可能唔同 set）"}
+                  >
+                    {q.matchType === "setCode" ? "編號" : "同名"}
                   </span>
                   <span className="font-medium text-blue-900">{q.sourceLabel}</span>
                   {q.asOf && (

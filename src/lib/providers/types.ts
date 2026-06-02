@@ -64,6 +64,21 @@ export function normSetCode(s: string | null | undefined): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/**
+ * Core card-name token for loose matching — leading Japanese run PLUS the
+ * card-type suffix (ex/GX/V/VMAX/VSTAR) that actually distinguishes variants.
+ * Plain "リザードン" is too broad (matches GX/V/ex); "リザードンex" is right.
+ * Strips a leading "(PSA10)" grade prefix first.
+ */
+export function coreCardName(name: string): string {
+  const s = name.replace(/^\([^)]*\)\s*/, "").trim();
+  const m = s.match(
+    /^[぀-ヿ一-鿿ｦ-ﾟ＆&・]+(VMAX|VSTAR|VUNION|GX|EX|ex|V)?/,
+  );
+  if (m && m[0].length >= 2) return m[0];
+  return (s.split(/[\s(（[【]/)[0] || s).trim();
+}
+
 export const JPY_TO_HKD = Number(process.env.JPY_TO_HKD || 0.0505);
 export const USD_TO_HKD = Number(process.env.USD_TO_HKD || 7.8);
 

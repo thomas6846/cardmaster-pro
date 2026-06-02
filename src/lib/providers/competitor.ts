@@ -1,5 +1,5 @@
 import type { MarketProvider, ProviderQuery, ProviderQuote } from "./types";
-import { jpyToHkd, normSetCode } from "./types";
+import { jpyToHkd, normSetCode, coreCardName } from "./types";
 import { prisma } from "../prisma";
 import { matchKey } from "../buybacktable";
 
@@ -18,18 +18,15 @@ export const competitorProvider: MarketProvider = {
   isEnabled: () => true,
   async fetch(query: ProviderQuery): Promise<ProviderQuote[]> {
     try {
-      // Core Japanese/first token of the AI name — competitor rows store short
-      // Japanese names, so matching the full "ピカチュウ (Pikachu) - Munch's..."
-      // never works; match the core token instead.
-      const jp = query.name.match(/^[぀-ヿ一-鿿ｦ-ﾟ]+/);
-      const core =
-        jp && jp[0].length >= 2 ? jp[0] : query.name.split(/[\s(（]/)[0] || query.name;
-
+      // Twitter price-list images rarely carry a collector number, so the
+      // competitor rows mostly have no setCode. We therefore match on the
+      // card-type-qualified name ("リザードンex", not bare "リザードン") and tag
+      // each quote: setCode-exact (high confidence) vs name (rough same-name
+      // reference). The aggregator prefers setCode matches but keeps name ones
+      // when no exact match exists anywhere.
+      const core = coreCardName(query.name);
       const wantCode = query.setCode ? normSetCode(query.setCode) : null;
 
-      // Pull a candidate set, then filter precisely. When a setCode is known we
-      // keep ONLY collector-number-exact rows (character names collide across
-      // many variants); name match is the fallback only when no setCode.
       const rows = await prisma.competitorPrice.findMany({
         where: {
           OR: [
@@ -38,12 +35,15 @@ export const competitorProvider: MarketProvider = {
           ],
         },
         orderBy: { capturedAt: "desc" },
-        take: 80,
+        take: 120,
       });
 
-      const useRows = wantCode
-        ? rows.filter((r) => r.setCode && normSetCode(r.setCode) === wantCode)
-        : rows.filter((r) => r.cardName.includes(core));
+      // Keep rows that either setCode-match OR name-contain the qualified core.
+      const useRows = rows.filter((r) => {
+        if (wantCode && r.setCode && normSetCode(r.setCode) === wantCode)
+          return true;
+        return core.length >= 2 && r.cardName.includes(core);
+      });
 
       // Keep the freshest row per (shop + conditionNote).
       const seen = new Set<string>();
